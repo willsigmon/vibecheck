@@ -1,0 +1,160 @@
+{
+  "name": "vibecheck-copilot",
+  "nodes": [
+    {
+      "parameters": {"rule": {"interval": [{"field": "minutes", "minutesInterval": 30}]}},
+      "id": "schedule-trigger",
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/GithubCopilot/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "q", "value": "tips OR workflow OR settings OR best practices"},
+            {"name": "sort", "value": "new"},
+            {"name": "restrict_sr", "value": "on"},
+            {"name": "limit", "value": "25"},
+            {"name": "t", "value": "week"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "headers": {"parameters": [{"name": "User-Agent", "value": "vibecheck/1.0"}]}
+        }
+      },
+      "id": "reddit-copilot",
+      "name": "Search r/GithubCopilot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, -100]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://hn.algolia.com/api/v1/search_by_date",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "query", "value": "github copilot OR copilot workspace"},
+            {"name": "tags", "value": "story"},
+            {"name": "numericFilters", "value": "created_at_i>{{ $now.minus(7, 'days').toSeconds() }}"}
+          ]
+        },
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "hackernews-search",
+      "name": "Search HN",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 100]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://dev.to/api/articles",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [{"name": "tag", "value": "copilot"}, {"name": "per_page", "value": "15"}]
+        },
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "devto-search",
+      "name": "Search Dev.to",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {"mode": "combine", "combineBy": "combineAll", "options": {}},
+      "id": "merge",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [500, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const posts = [];\nfor (const item of $input.all()) {\n  const d = item.json;\n  if (d.data?.children) d.data.children.forEach(c => { if (c.data.score >= 5) posts.push({source:'reddit',title:c.data.title,content:c.data.selftext?.substring(0,2000)||'',url:`https://reddit.com${c.data.permalink}`,score:c.data.score}); });\n  if (d.hits) d.hits.forEach(h => { if (h.points >= 10) posts.push({source:'hn',title:h.title,url:h.url||`https://news.ycombinator.com/item?id=${h.objectID}`,score:h.points}); });\n  if (Array.isArray(d)) d.forEach(a => { if (a.positive_reactions_count >= 5) posts.push({source:'devto',title:a.title,url:a.url,score:a.positive_reactions_count}); });\n}\nconst seen = new Set();\nreturn posts.sort((a,b)=>b.score-a.score).filter(p=>{const k=p.title.toLowerCase().substring(0,50);if(seen.has(k))return false;seen.add(k);return true;}).slice(0,30).map(p=>({json:p}));"
+      },
+      "id": "normalize",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 100]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4o-mini",
+        "messages": {
+          "values": [
+            {"role": "system", "content": "Analyze GitHub Copilot tips. Extract ACTIONABLE insights.\n\nREJECT: spam, complaints, outdated.\n\nEXTRACT: keybindings, settings, prompt patterns, workspace tips.\n\nFormat: {quality_score:1-10, is_actionable:bool, category:workflow|config|shortcut|prompt|tip, insight:string, source_url:string, confidence:high|medium|low}\n\nOnly >= 7."},
+            {"role": "user", "content": "{{ JSON.stringify($json) }}"}
+          ]
+        },
+        "options": {"maxTokens": 2000, "temperature": 0.3}
+      },
+      "id": "analyze",
+      "name": "Analyze",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [900, 100],
+      "credentials": {"openAiApi": {"id": "YOUR_ID", "name": "OpenAI"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=[],now=new Date().toISOString();for(const i of $input.all()){try{const t=i.json.message?.content||'';(t.match(/\\{[^{}]*\\}/g)||[]).forEach(m=>{try{const x=JSON.parse(m);if(x.quality_score>=7&&x.is_actionable)r.push({...x,mined_at:now});}catch(e){}});}catch(e){}}return r.length?r.map(x=>({json:x})):[{json:{no_new:true}}];"
+      },
+      "id": "parse",
+      "name": "Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 100]
+    },
+    {
+      "parameters": {"operation": "read", "fileSelector": "./knowledge-base.json", "options": {}},
+      "id": "read",
+      "name": "Read KB",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1300, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const e=$('Read KB').first()?.json||{insights:[]},n=$('Parse').all().map(i=>i.json);if(n.length===1&&n[0].no_new)return[{json:{status:'none'}}];const t=new Set((e.insights||[]).map(i=>i.insight?.toLowerCase().substring(0,100)));const u=n.filter(x=>x.insight&&!t.has(x.insight.toLowerCase().substring(0,100)));if(!u.length)return[{json:{status:'dup'}}];const m=[...(e.insights||[]),...u].sort((a,b)=>(b.quality_score||0)-(a.quality_score||0)).slice(0,200);return[{json:{insights:m,last_updated:new Date().toISOString(),total:m.length,new:u.length}}];"
+      },
+      "id": "merge-kb",
+      "name": "Merge",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 100]
+    },
+    {
+      "parameters": {"operation": "write", "fileName": "./knowledge-base.json", "options": {}},
+      "id": "write",
+      "name": "Save",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1700, 100]
+    }
+  ],
+  "connections": {
+    "Every 30 Minutes": {"main": [[{"node": "Search r/GithubCopilot", "type": "main", "index": 0}, {"node": "Search HN", "type": "main", "index": 0}, {"node": "Search Dev.to", "type": "main", "index": 0}]]},
+    "Search r/GithubCopilot": {"main": [[{"node": "Merge", "type": "main", "index": 0}]]},
+    "Search HN": {"main": [[{"node": "Merge", "type": "main", "index": 0}]]},
+    "Search Dev.to": {"main": [[{"node": "Merge", "type": "main", "index": 0}]]},
+    "Merge": {"main": [[{"node": "Normalize", "type": "main", "index": 0}]]},
+    "Normalize": {"main": [[{"node": "Analyze", "type": "main", "index": 0}]]},
+    "Analyze": {"main": [[{"node": "Parse", "type": "main", "index": 0}]]},
+    "Parse": {"main": [[{"node": "Read KB", "type": "main", "index": 0}]]},
+    "Read KB": {"main": [[{"node": "Merge", "type": "main", "index": 0}]]},
+    "Merge": {"main": [[{"node": "Save", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"}
+}

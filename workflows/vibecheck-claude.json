@@ -1,0 +1,326 @@
+{
+  "name": "vibecheck-claude",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/ClaudeAI/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "q", "value": "claude code tips OR CLAUDE.md OR workflow OR best practices"},
+            {"name": "sort", "value": "new"},
+            {"name": "restrict_sr", "value": "on"},
+            {"name": "limit", "value": "25"},
+            {"name": "t", "value": "week"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "headers": {"parameters": [{"name": "User-Agent", "value": "Claude-Intelligence-Miner/1.0"}]}
+        }
+      },
+      "id": "reddit-claudeai",
+      "name": "Search r/ClaudeAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, -200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/LocalLLaMA/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "q", "value": "claude code OR agentic coding OR vibe coding"},
+            {"name": "sort", "value": "new"},
+            {"name": "restrict_sr", "value": "on"},
+            {"name": "limit", "value": "15"},
+            {"name": "t", "value": "week"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "headers": {"parameters": [{"name": "User-Agent", "value": "Claude-Intelligence-Miner/1.0"}]}
+        }
+      },
+      "id": "reddit-localllama",
+      "name": "Search r/LocalLLaMA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://hn.algolia.com/api/v1/search_by_date",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "query", "value": "claude code OR agentic coding OR vibe coding"},
+            {"name": "tags", "value": "story"},
+            {"name": "numericFilters", "value": "created_at_i>{{ $now.minus(7, 'days').toSeconds() }}"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}}
+        }
+      },
+      "id": "hackernews-search",
+      "name": "Search Hacker News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://dev.to/api/articles",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "tag", "value": "claude"},
+            {"name": "per_page", "value": "15"},
+            {"name": "state", "value": "rising"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}}
+        }
+      },
+      "id": "devto-search",
+      "name": "Search Dev.to",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 400]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "merge-sources",
+      "name": "Merge All Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [500, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and normalize posts from all sources\nconst allPosts = [];\n\nfor (const item of $input.all()) {\n  const data = item.json;\n  \n  // Reddit format\n  if (data.data && data.data.children) {\n    for (const child of data.data.children) {\n      const post = child.data;\n      if (post.score >= 5) { // Filter low-engagement\n        allPosts.push({\n          source: 'reddit',\n          subreddit: post.subreddit,\n          title: post.title,\n          content: post.selftext?.substring(0, 2000) || '',\n          url: `https://reddit.com${post.permalink}`,\n          score: post.score,\n          comments: post.num_comments,\n          created: new Date(post.created_utc * 1000).toISOString(),\n          author: post.author\n        });\n      }\n    }\n  }\n  \n  // Hacker News format\n  if (data.hits) {\n    for (const hit of data.hits) {\n      if (hit.points >= 10) { // Filter low-engagement\n        allPosts.push({\n          source: 'hackernews',\n          title: hit.title,\n          content: hit.story_text?.substring(0, 2000) || '',\n          url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,\n          score: hit.points,\n          comments: hit.num_comments,\n          created: hit.created_at,\n          author: hit.author\n        });\n      }\n    }\n  }\n  \n  // Dev.to format (array of articles)\n  if (Array.isArray(data)) {\n    for (const article of data) {\n      if (article.positive_reactions_count >= 5) {\n        allPosts.push({\n          source: 'devto',\n          title: article.title,\n          content: article.description?.substring(0, 2000) || '',\n          url: article.url,\n          score: article.positive_reactions_count,\n          comments: article.comments_count,\n          created: article.published_at,\n          author: article.user?.username\n        });\n      }\n    }\n  }\n}\n\n// Sort by score and dedupe by similar titles\nconst seen = new Set();\nconst filtered = allPosts\n  .sort((a, b) => b.score - a.score)\n  .filter(post => {\n    const key = post.title.toLowerCase().substring(0, 50);\n    if (seen.has(key)) return false;\n    seen.add(key);\n    return true;\n  })\n  .slice(0, 30); // Top 30 posts\n\nreturn filtered.map(post => ({ json: post }));"
+      },
+      "id": "normalize-posts",
+      "name": "Normalize & Filter Posts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 100]
+    },
+    {
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {"__rl": true, "mode": "list", "value": "claude-sonnet-4-20250514"},
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an AI research analyst specializing in Claude Code and AI coding tools. Your job is to analyze social media posts and extract ACTIONABLE insights for a power user.\n\nCRITICAL FILTERS - REJECT posts that are:\n- Bot-generated or promotional spam\n- Beginner questions with no useful answers\n- Complaints without solutions\n- Outdated information (pre-2024)\n- Duplicate tips already widely known\n\nEXTRACT from GOOD posts:\n- New workflow patterns\n- Undocumented features or tricks\n- Performance optimizations\n- Cost-saving strategies\n- Integration patterns\n- CLAUDE.md configurations\n- Hook patterns\n- Multi-agent orchestration tips\n\nFormat output as JSON with this structure:\n{\n  \"quality_score\": 1-10,\n  \"is_actionable\": true/false,\n  \"category\": \"workflow|config|cost|integration|feature|tip\",\n  \"insight\": \"concise actionable summary\",\n  \"source_url\": \"url\",\n  \"confidence\": \"high|medium|low\"\n}"
+            },
+            {
+              "role": "user",
+              "content": "Analyze these posts and extract actionable Claude Code insights. Only return insights with quality_score >= 7:\n\n{{ JSON.stringify($json) }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 2000,
+          "temperature": 0.3
+        }
+      },
+      "id": "analyze-with-claude",
+      "name": "Analyze with Claude",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [900, 100],
+      "credentials": {
+        "anthropicApi": {
+          "id": "YOUR_ANTHROPIC_CREDENTIAL_ID",
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude's analysis and filter high-quality insights\nconst results = [];\nconst now = new Date().toISOString();\n\nfor (const item of $input.all()) {\n  try {\n    const response = item.json.message?.content?.[0]?.text || item.json.text || '';\n    \n    // Extract JSON objects from response\n    const jsonMatches = response.match(/\\{[^{}]*\\}/g) || [];\n    \n    for (const match of jsonMatches) {\n      try {\n        const insight = JSON.parse(match);\n        if (insight.quality_score >= 7 && insight.is_actionable) {\n          results.push({\n            ...insight,\n            mined_at: now,\n            batch_id: Date.now()\n          });\n        }\n      } catch (e) {\n        // Skip malformed JSON\n      }\n    }\n  } catch (e) {\n    // Skip errors\n  }\n}\n\nreturn results.length > 0 \n  ? results.map(r => ({ json: r }))\n  : [{ json: { no_new_insights: true, checked_at: now } }];"
+      },
+      "id": "parse-insights",
+      "name": "Parse & Filter Insights",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 100]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "/mnt/user/appdata/dotfiles-hub/claude/intelligence-kb.json",
+        "options": {}
+      },
+      "id": "read-existing-kb",
+      "name": "Read Existing KB",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1300, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge new insights with existing knowledge base\nconst existingData = $('Read Existing KB').first()?.json || { insights: [] };\nconst newInsights = $('Parse & Filter Insights').all().map(i => i.json);\n\n// Skip if no new insights\nif (newInsights.length === 1 && newInsights[0].no_new_insights) {\n  return [{ json: { status: 'no_updates', checked_at: new Date().toISOString() } }];\n}\n\n// Deduplicate by insight text similarity\nconst existingInsights = existingData.insights || [];\nconst existingTexts = new Set(existingInsights.map(i => i.insight?.toLowerCase().substring(0, 100)));\n\nconst uniqueNew = newInsights.filter(n => {\n  if (!n.insight) return false;\n  const key = n.insight.toLowerCase().substring(0, 100);\n  if (existingTexts.has(key)) return false;\n  existingTexts.add(key);\n  return true;\n});\n\nif (uniqueNew.length === 0) {\n  return [{ json: { status: 'no_unique_insights', checked_at: new Date().toISOString() } }];\n}\n\n// Merge and sort by quality\nconst merged = [...existingInsights, ...uniqueNew]\n  .sort((a, b) => (b.quality_score || 0) - (a.quality_score || 0))\n  .slice(0, 200); // Keep top 200\n\nreturn [{\n  json: {\n    insights: merged,\n    last_updated: new Date().toISOString(),\n    total_insights: merged.length,\n    new_this_run: uniqueNew.length\n  }\n}];"
+      },
+      "id": "merge-kb",
+      "name": "Merge with KB",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 100]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "/mnt/user/appdata/dotfiles-hub/claude/intelligence-kb.json",
+        "options": {}
+      },
+      "id": "write-kb",
+      "name": "Save Knowledge Base",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1700, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-new-insights",
+              "leftValue": "={{ $json.new_this_run }}",
+              "rightValue": 0,
+              "operator": {"type": "number", "operation": "gt"}
+            }
+          ]
+        }
+      },
+      "id": "has-new-insights",
+      "name": "Has New Insights?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1900, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://tower.local:5678/webhook/claude-insights",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "new_insights", "value": "={{ $json.new_this_run }}"},
+            {"name": "total", "value": "={{ $json.total_insights }}"},
+            {"name": "timestamp", "value": "={{ $json.last_updated }}"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "notify-webhook",
+      "name": "Notify (Optional)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2100, 0]
+    }
+  ],
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [
+        [
+          {"node": "Search r/ClaudeAI", "type": "main", "index": 0},
+          {"node": "Search r/LocalLLaMA", "type": "main", "index": 0},
+          {"node": "Search Hacker News", "type": "main", "index": 0},
+          {"node": "Search Dev.to", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Search r/ClaudeAI": {
+      "main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]
+    },
+    "Search r/LocalLLaMA": {
+      "main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]
+    },
+    "Search Hacker News": {
+      "main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]
+    },
+    "Search Dev.to": {
+      "main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]
+    },
+    "Merge All Sources": {
+      "main": [[{"node": "Normalize & Filter Posts", "type": "main", "index": 0}]]
+    },
+    "Normalize & Filter Posts": {
+      "main": [[{"node": "Analyze with Claude", "type": "main", "index": 0}]]
+    },
+    "Analyze with Claude": {
+      "main": [[{"node": "Parse & Filter Insights", "type": "main", "index": 0}]]
+    },
+    "Parse & Filter Insights": {
+      "main": [[{"node": "Read Existing KB", "type": "main", "index": 0}]]
+    },
+    "Read Existing KB": {
+      "main": [[{"node": "Merge with KB", "type": "main", "index": 0}]]
+    },
+    "Merge with KB": {
+      "main": [[{"node": "Save Knowledge Base", "type": "main", "index": 0}]]
+    },
+    "Save Knowledge Base": {
+      "main": [[{"node": "Has New Insights?", "type": "main", "index": 0}]]
+    },
+    "Has New Insights?": {
+      "main": [
+        [{"node": "Notify (Optional)", "type": "main", "index": 0}],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "meta": {
+    "instanceId": "claude-x-tower",
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {"name": "claude", "id": "claude-tag"},
+    {"name": "automation", "id": "auto-tag"},
+    {"name": "intelligence", "id": "intel-tag"}
+  ]
+}

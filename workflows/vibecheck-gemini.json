@@ -1,0 +1,253 @@
+{
+  "name": "vibecheck-gemini",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/Bard/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "q", "value": "gemini cli OR gemini 2.5 OR agentic coding OR workflow tips"},
+            {"name": "sort", "value": "new"},
+            {"name": "restrict_sr", "value": "on"},
+            {"name": "limit", "value": "25"},
+            {"name": "t", "value": "week"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "headers": {"parameters": [{"name": "User-Agent", "value": "Gemini-Intelligence-Miner/1.0"}]}
+        }
+      },
+      "id": "reddit-bard",
+      "name": "Search r/Bard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, -200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/LocalLLaMA/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "q", "value": "gemini cli OR gemini 2.5 pro OR gemini 3"},
+            {"name": "sort", "value": "new"},
+            {"name": "restrict_sr", "value": "on"},
+            {"name": "limit", "value": "15"},
+            {"name": "t", "value": "week"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "headers": {"parameters": [{"name": "User-Agent", "value": "Gemini-Intelligence-Miner/1.0"}]}
+        }
+      },
+      "id": "reddit-localllama",
+      "name": "Search r/LocalLLaMA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://hn.algolia.com/api/v1/search_by_date",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "query", "value": "gemini cli OR gemini 2.5 OR agentic coding google"},
+            {"name": "tags", "value": "story"},
+            {"name": "numericFilters", "value": "created_at_i>{{ $now.minus(7, 'days').toSeconds() }}"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}}
+        }
+      },
+      "id": "hackernews-search",
+      "name": "Search Hacker News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://dev.to/api/articles",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "tag", "value": "gemini"},
+            {"name": "per_page", "value": "15"},
+            {"name": "state", "value": "rising"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}}
+        }
+      },
+      "id": "devto-search",
+      "name": "Search Dev.to",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 400]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "merge-sources",
+      "name": "Merge All Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [500, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and normalize posts from all sources\nconst allPosts = [];\n\nfor (const item of $input.all()) {\n  const data = item.json;\n  \n  // Reddit format\n  if (data.data && data.data.children) {\n    for (const child of data.data.children) {\n      const post = child.data;\n      if (post.score >= 5) {\n        allPosts.push({\n          source: 'reddit',\n          subreddit: post.subreddit,\n          title: post.title,\n          content: post.selftext?.substring(0, 2000) || '',\n          url: `https://reddit.com${post.permalink}`,\n          score: post.score,\n          comments: post.num_comments,\n          created: new Date(post.created_utc * 1000).toISOString(),\n          author: post.author\n        });\n      }\n    }\n  }\n  \n  // Hacker News format\n  if (data.hits) {\n    for (const hit of data.hits) {\n      if (hit.points >= 10) {\n        allPosts.push({\n          source: 'hackernews',\n          title: hit.title,\n          content: hit.story_text?.substring(0, 2000) || '',\n          url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,\n          score: hit.points,\n          comments: hit.num_comments,\n          created: hit.created_at,\n          author: hit.author\n        });\n      }\n    }\n  }\n  \n  // Dev.to format\n  if (Array.isArray(data)) {\n    for (const article of data) {\n      if (article.positive_reactions_count >= 5) {\n        allPosts.push({\n          source: 'devto',\n          title: article.title,\n          content: article.description?.substring(0, 2000) || '',\n          url: article.url,\n          score: article.positive_reactions_count,\n          comments: article.comments_count,\n          created: article.published_at,\n          author: article.user?.username\n        });\n      }\n    }\n  }\n}\n\nconst seen = new Set();\nconst filtered = allPosts\n  .sort((a, b) => b.score - a.score)\n  .filter(post => {\n    const key = post.title.toLowerCase().substring(0, 50);\n    if (seen.has(key)) return false;\n    seen.add(key);\n    return true;\n  })\n  .slice(0, 30);\n\nreturn filtered.map(post => ({ json: post }));"
+      },
+      "id": "normalize-posts",
+      "name": "Normalize & Filter Posts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are an AI research analyst specializing in Gemini CLI and agentic coding tools. Analyze these posts and extract ACTIONABLE insights.\\n\\nREJECT posts that are: bot-generated, promotional spam, beginner questions without answers, complaints without solutions, outdated info.\\n\\nEXTRACT: workflow patterns, undocumented features, cost optimizations, integration patterns, GEMINI.md configurations.\\n\\nFormat as JSON array with objects containing: quality_score (1-10), is_actionable (bool), category (workflow|config|cost|integration|feature|tip), insight (string), source_url (string), confidence (high|medium|low).\\n\\nOnly return insights with quality_score >= 7.\\n\\nPosts to analyze:\\n{{ JSON.stringify($json) }}\"\n    }]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.3,\n    \"maxOutputTokens\": 2000\n  }\n}",
+        "options": {}
+      },
+      "id": "analyze-with-gemini",
+      "name": "Analyze with Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 100],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google AI API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nconst now = new Date().toISOString();\n\nfor (const item of $input.all()) {\n  try {\n    const response = item.json.candidates?.[0]?.content?.parts?.[0]?.text || '';\n    const jsonMatches = response.match(/\\{[^{}]*\\}/g) || [];\n    \n    for (const match of jsonMatches) {\n      try {\n        const insight = JSON.parse(match);\n        if (insight.quality_score >= 7 && insight.is_actionable) {\n          results.push({\n            ...insight,\n            mined_at: now,\n            batch_id: Date.now()\n          });\n        }\n      } catch (e) {}\n    }\n  } catch (e) {}\n}\n\nreturn results.length > 0 \n  ? results.map(r => ({ json: r }))\n  : [{ json: { no_new_insights: true, checked_at: now } }];"
+      },
+      "id": "parse-insights",
+      "name": "Parse & Filter Insights",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 100]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "./gemini-knowledge-base.json",
+        "options": {}
+      },
+      "id": "read-existing-kb",
+      "name": "Read Existing KB",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1300, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const existingData = $('Read Existing KB').first()?.json || { insights: [] };\nconst newInsights = $('Parse & Filter Insights').all().map(i => i.json);\n\nif (newInsights.length === 1 && newInsights[0].no_new_insights) {\n  return [{ json: { status: 'no_updates', checked_at: new Date().toISOString() } }];\n}\n\nconst existingInsights = existingData.insights || [];\nconst existingTexts = new Set(existingInsights.map(i => i.insight?.toLowerCase().substring(0, 100)));\n\nconst uniqueNew = newInsights.filter(n => {\n  if (!n.insight) return false;\n  const key = n.insight.toLowerCase().substring(0, 100);\n  if (existingTexts.has(key)) return false;\n  existingTexts.add(key);\n  return true;\n});\n\nif (uniqueNew.length === 0) {\n  return [{ json: { status: 'no_unique_insights', checked_at: new Date().toISOString() } }];\n}\n\nconst merged = [...existingInsights, ...uniqueNew]\n  .sort((a, b) => (b.quality_score || 0) - (a.quality_score || 0))\n  .slice(0, 200);\n\nreturn [{\n  json: {\n    insights: merged,\n    last_updated: new Date().toISOString(),\n    total_insights: merged.length,\n    new_this_run: uniqueNew.length\n  }\n}];"
+      },
+      "id": "merge-kb",
+      "name": "Merge with KB",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 100]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "./gemini-knowledge-base.json",
+        "options": {}
+      },
+      "id": "write-kb",
+      "name": "Save Knowledge Base",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1700, 100]
+    }
+  ],
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [
+        [
+          {"node": "Search r/Bard", "type": "main", "index": 0},
+          {"node": "Search r/LocalLLaMA", "type": "main", "index": 0},
+          {"node": "Search Hacker News", "type": "main", "index": 0},
+          {"node": "Search Dev.to", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Search r/Bard": {
+      "main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]
+    },
+    "Search r/LocalLLaMA": {
+      "main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]
+    },
+    "Search Hacker News": {
+      "main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]
+    },
+    "Search Dev.to": {
+      "main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]
+    },
+    "Merge All Sources": {
+      "main": [[{"node": "Normalize & Filter Posts", "type": "main", "index": 0}]]
+    },
+    "Normalize & Filter Posts": {
+      "main": [[{"node": "Analyze with Gemini", "type": "main", "index": 0}]]
+    },
+    "Analyze with Gemini": {
+      "main": [[{"node": "Parse & Filter Insights", "type": "main", "index": 0}]]
+    },
+    "Parse & Filter Insights": {
+      "main": [[{"node": "Read Existing KB", "type": "main", "index": 0}]]
+    },
+    "Read Existing KB": {
+      "main": [[{"node": "Merge with KB", "type": "main", "index": 0}]]
+    },
+    "Merge with KB": {
+      "main": [[{"node": "Save Knowledge Base", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "gemini-miner"
+  }
+}

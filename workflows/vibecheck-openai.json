@@ -1,0 +1,200 @@
+{
+  "name": "vibecheck-openai",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "minutes", "minutesInterval": 30}]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/ChatGPTCoding/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "q", "value": "tips OR workflow OR best practices OR cursor OR copilot"},
+            {"name": "sort", "value": "new"},
+            {"name": "restrict_sr", "value": "on"},
+            {"name": "limit", "value": "25"},
+            {"name": "t", "value": "week"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "headers": {"parameters": [{"name": "User-Agent", "value": "vibecheck/1.0"}]}
+        }
+      },
+      "id": "reddit-chatgptcoding",
+      "name": "Search r/ChatGPTCoding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, -200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/OpenAI/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "q", "value": "coding tips OR developer OR API workflow"},
+            {"name": "sort", "value": "new"},
+            {"name": "restrict_sr", "value": "on"},
+            {"name": "limit", "value": "15"},
+            {"name": "t", "value": "week"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "headers": {"parameters": [{"name": "User-Agent", "value": "vibecheck/1.0"}]}
+        }
+      },
+      "id": "reddit-openai",
+      "name": "Search r/OpenAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://hn.algolia.com/api/v1/search_by_date",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "query", "value": "chatgpt coding OR copilot OR cursor OR openai api"},
+            {"name": "tags", "value": "story"},
+            {"name": "numericFilters", "value": "created_at_i>{{ $now.minus(7, 'days').toSeconds() }}"}
+          ]
+        },
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "hackernews-search",
+      "name": "Search Hacker News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://dev.to/api/articles",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "tag", "value": "openai"},
+            {"name": "per_page", "value": "15"},
+            {"name": "state", "value": "rising"}
+          ]
+        },
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "devto-search",
+      "name": "Search Dev.to",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 400]
+    },
+    {
+      "parameters": {"mode": "combine", "combineBy": "combineAll", "options": {}},
+      "id": "merge-sources",
+      "name": "Merge All Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [500, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allPosts = [];\nfor (const item of $input.all()) {\n  const data = item.json;\n  if (data.data && data.data.children) {\n    for (const child of data.data.children) {\n      const post = child.data;\n      if (post.score >= 5) {\n        allPosts.push({\n          source: 'reddit', subreddit: post.subreddit, title: post.title,\n          content: post.selftext?.substring(0, 2000) || '',\n          url: `https://reddit.com${post.permalink}`,\n          score: post.score, comments: post.num_comments,\n          created: new Date(post.created_utc * 1000).toISOString(), author: post.author\n        });\n      }\n    }\n  }\n  if (data.hits) {\n    for (const hit of data.hits) {\n      if (hit.points >= 10) {\n        allPosts.push({\n          source: 'hackernews', title: hit.title,\n          content: hit.story_text?.substring(0, 2000) || '',\n          url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,\n          score: hit.points, comments: hit.num_comments,\n          created: hit.created_at, author: hit.author\n        });\n      }\n    }\n  }\n  if (Array.isArray(data)) {\n    for (const article of data) {\n      if (article.positive_reactions_count >= 5) {\n        allPosts.push({\n          source: 'devto', title: article.title,\n          content: article.description?.substring(0, 2000) || '',\n          url: article.url, score: article.positive_reactions_count,\n          comments: article.comments_count,\n          created: article.published_at, author: article.user?.username\n        });\n      }\n    }\n  }\n}\nconst seen = new Set();\nconst filtered = allPosts.sort((a, b) => b.score - a.score).filter(post => {\n  const key = post.title.toLowerCase().substring(0, 50);\n  if (seen.has(key)) return false;\n  seen.add(key); return true;\n}).slice(0, 30);\nreturn filtered.map(post => ({ json: post }));"
+      },
+      "id": "normalize-posts",
+      "name": "Normalize & Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 100]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4o-mini",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an AI research analyst for developers using OpenAI tools (ChatGPT, Copilot, Cursor, API). Extract ACTIONABLE coding insights.\n\nREJECT: bots, spam, beginner questions without answers, complaints without solutions, outdated info.\n\nEXTRACT: workflow patterns, undocumented features, cost optimizations, prompt engineering tips.\n\nFormat as JSON: {quality_score: 1-10, is_actionable: bool, category: workflow|config|cost|prompt|feature|tip, insight: string, source_url: string, confidence: high|medium|low}\n\nOnly return insights with quality_score >= 7."
+            },
+            {
+              "role": "user",
+              "content": "Analyze these posts:\n\n{{ JSON.stringify($json) }}"
+            }
+          ]
+        },
+        "options": {"maxTokens": 2000, "temperature": 0.3}
+      },
+      "id": "analyze-with-openai",
+      "name": "Analyze with GPT-4o-mini",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [900, 100],
+      "credentials": {"openAiApi": {"id": "YOUR_CREDENTIAL_ID", "name": "OpenAI"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nconst now = new Date().toISOString();\nfor (const item of $input.all()) {\n  try {\n    const response = item.json.message?.content || item.json.text || '';\n    const jsonMatches = response.match(/\\{[^{}]*\\}/g) || [];\n    for (const match of jsonMatches) {\n      try {\n        const insight = JSON.parse(match);\n        if (insight.quality_score >= 7 && insight.is_actionable) {\n          results.push({...insight, mined_at: now, batch_id: Date.now()});\n        }\n      } catch (e) {}\n    }\n  } catch (e) {}\n}\nreturn results.length > 0 ? results.map(r => ({ json: r })) : [{ json: { no_new_insights: true, checked_at: now } }];"
+      },
+      "id": "parse-insights",
+      "name": "Parse Insights",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 100]
+    },
+    {
+      "parameters": {"operation": "read", "fileSelector": "./knowledge-base.json", "options": {}},
+      "id": "read-kb",
+      "name": "Read KB",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1300, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const existingData = $('Read KB').first()?.json || { insights: [] };\nconst newInsights = $('Parse Insights').all().map(i => i.json);\nif (newInsights.length === 1 && newInsights[0].no_new_insights) return [{ json: { status: 'no_updates' } }];\nconst existingInsights = existingData.insights || [];\nconst existingTexts = new Set(existingInsights.map(i => i.insight?.toLowerCase().substring(0, 100)));\nconst uniqueNew = newInsights.filter(n => {\n  if (!n.insight) return false;\n  const key = n.insight.toLowerCase().substring(0, 100);\n  if (existingTexts.has(key)) return false;\n  existingTexts.add(key); return true;\n});\nif (uniqueNew.length === 0) return [{ json: { status: 'no_unique' } }];\nconst merged = [...existingInsights, ...uniqueNew].sort((a, b) => (b.quality_score || 0) - (a.quality_score || 0)).slice(0, 200);\nreturn [{ json: { insights: merged, last_updated: new Date().toISOString(), total_insights: merged.length, new_this_run: uniqueNew.length } }];"
+      },
+      "id": "merge-kb",
+      "name": "Merge KB",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 100]
+    },
+    {
+      "parameters": {"operation": "write", "fileName": "./knowledge-base.json", "options": {}},
+      "id": "write-kb",
+      "name": "Save KB",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1700, 100]
+    }
+  ],
+  "connections": {
+    "Every 30 Minutes": {"main": [[{"node": "Search r/ChatGPTCoding", "type": "main", "index": 0}, {"node": "Search r/OpenAI", "type": "main", "index": 0}, {"node": "Search Hacker News", "type": "main", "index": 0}, {"node": "Search Dev.to", "type": "main", "index": 0}]]},
+    "Search r/ChatGPTCoding": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]},
+    "Search r/OpenAI": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]},
+    "Search Hacker News": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]},
+    "Search Dev.to": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]},
+    "Merge All Sources": {"main": [[{"node": "Normalize & Filter", "type": "main", "index": 0}]]},
+    "Normalize & Filter": {"main": [[{"node": "Analyze with GPT-4o-mini", "type": "main", "index": 0}]]},
+    "Analyze with GPT-4o-mini": {"main": [[{"node": "Parse Insights", "type": "main", "index": 0}]]},
+    "Parse Insights": {"main": [[{"node": "Read KB", "type": "main", "index": 0}]]},
+    "Read KB": {"main": [[{"node": "Merge KB", "type": "main", "index": 0}]]},
+    "Merge KB": {"main": [[{"node": "Save KB", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"}
+}
