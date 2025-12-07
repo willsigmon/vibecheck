@@ -8,14 +8,36 @@ You're vibe coding. Reddit, HN, and dev Twitter are dropping tips daily. You're 
 
 ---
 
+## One-Line Install
+
+### macOS / Linux
+```bash
+curl -fsSL https://raw.githubusercontent.com/willsigmon/vibecheck/main/extras/quick-setup.sh | bash
+```
+
+### Windows (PowerShell)
+```powershell
+irm https://raw.githubusercontent.com/willsigmon/vibecheck/main/extras/quick-setup.ps1 | iex
+```
+
+### Universal (Python - works everywhere)
+```bash
+python3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/willsigmon/vibecheck/main/extras/quick-setup.py').read())"
+```
+
+---
+
 ## For Coders Who Use
 
-- **Claude Code** / Claude CLI
-- **Gemini CLI** / Gemini 2.5 Pro
-- **Cursor** / Windsurf / Aider
-- Any agentic coding setup
+| Tool | Workflow | AI Cost |
+|------|----------|---------|
+| **Claude Code** | `vibecheck-claude.json` | ~$7/mo |
+| **Gemini CLI** | `vibecheck-gemini.json` | Free* |
+| **ChatGPT / OpenAI** | `vibecheck-openai.json` | ~$3/mo |
+| **Cursor / Windsurf** | `vibecheck-cursor.json` | ~$3/mo |
+| **GitHub Copilot** | `vibecheck-copilot.json` | ~$3/mo |
 
-Pick your workflow. Both included.
+*Gemini free tier: 1,500 req/day. This uses ~48/day.
 
 ---
 
@@ -23,9 +45,9 @@ Pick your workflow. Both included.
 
 ```
 Every 30 min:
-  r/ClaudeAI, r/Bard, r/LocalLLaMA ─┐
-  Hacker News ──────────────────────┼──> Filter ──> AI Analysis ──> Dedupe ──> Save
-  Dev.to ───────────────────────────┘
+  Reddit (tool-specific subs) ──┐
+  Hacker News ──────────────────┼──> Filter ──> AI Analysis ──> Dedupe ──> Save
+  Dev.to ───────────────────────┘
 ```
 
 1. Scrapes Reddit, HN, Dev.to for agentic coding discussion
@@ -37,30 +59,30 @@ Every 30 min:
 
 ---
 
-## Quick Start
+## Manual Setup
 
-### 1. Pick Your Flavor
-
-| Workflow | AI Used | Cost |
-|----------|---------|------|
-| `vibecheck-claude.json` | Claude Sonnet | ~$7/mo |
-| `vibecheck-gemini.json` | Gemini 2.5 Pro | Free* |
-
-*Gemini free tier: 1,500 req/day. This uses ~48/day.
-
-### 2. Import to n8n
+### 1. Get n8n Running
 
 ```bash
-# Open your n8n instance
-open http://localhost:5678
+# Docker (any OS)
+docker run -d --name n8n -p 5678:5678 -v n8n_data:/home/node/.n8n n8nio/n8n
+
+# macOS
+brew install n8n && n8n start
+
+# Linux/Windows
+npm install -g n8n && n8n start
 ```
 
-**Workflows** → **Import** → Pick your JSON
+### 2. Import Workflow
+
+Open n8n (`http://localhost:5678`) → Workflows → Import → Pick your JSON
 
 ### 3. Add Credentials
 
-**For Claude:** Add Anthropic API credential
-**For Gemini:** Add Google AI API key ([get one free](https://aistudio.google.com))
+- **Claude:** Anthropic API key
+- **Gemini:** Google AI API key ([get one free](https://aistudio.google.com))
+- **OpenAI:** OpenAI API key
 
 ### 4. Activate
 
@@ -97,7 +119,7 @@ Tips saved to `knowledge-base.json`:
 }
 ```
 
-Query by category: `workflow`, `config`, `cost`, `integration`, `feature`, `tip`
+Categories: `workflow`, `config`, `cost`, `shortcut`, `prompt`, `feature`, `tip`
 
 ---
 
@@ -115,24 +137,14 @@ Check `extras/pro-tips.md` for a curated dump of everything we've mined.
 
 **Different schedule:** Edit the trigger (hourly = half the cost)
 
-**Different subreddits:** Swap r/ClaudeAI for r/cursor, r/ChatGPTCoding, etc.
+**Different subreddits:** Swap for r/cursor, r/ChatGPTCoding, etc.
 
 ---
 
 ## Requirements
 
 - [n8n](https://n8n.io) (self-hosted or cloud)
-- API key (Anthropic or Google AI)
-
----
-
-## Install
-
-```bash
-git clone https://github.com/willsigmon/vibecheck.git
-cd vibecheck
-# Import workflow via n8n UI
-```
+- API key (Anthropic, Google AI, or OpenAI)
 
 ---
 
