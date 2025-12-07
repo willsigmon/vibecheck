@@ -1,0 +1,178 @@
+{
+  "name": "vibecheck-newsletter-digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {"interval": [{"field": "cronExpression", "expression": "0 8 * * *"}]}
+      },
+      "id": "daily-8am",
+      "name": "Daily 8AM ET",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT content FROM vibecheck_raw_content WHERE fetched_at > NOW() - INTERVAL '24 hours' ORDER BY fetched_at DESC LIMIT 10"
+      },
+      "id": "get-raw",
+      "name": "Get Last 24h Content",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [250, 300],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = [];\nconst seen = new Set();\n\nfor (const row of $input.all()) {\n  try {\n    const data = JSON.parse(row.json.content);\n    if (data.items) {\n      for (const item of data.items) {\n        const key = item.title.toLowerCase().substring(0, 50);\n        if (!seen.has(key)) {\n          seen.add(key);\n          allItems.push(item);\n        }\n      }\n    }\n  } catch(e) {}\n}\n\n// Sort by weighted score (recency + engagement)\nallItems.sort((a, b) => {\n  const scoreA = (a.score || 0) * (1 / Math.max(1, (a.age_hours || 1) / 12));\n  const scoreB = (b.score || 0) * (1 / Math.max(1, (b.age_hours || 1) / 12));\n  return scoreB - scoreA;\n});\n\nreturn [{ json: { items: allItems.slice(0, 60) } }];"
+      },
+      "id": "dedupe",
+      "name": "Dedupe & Rank",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "model": "models/gemini-2.0-flash",
+        "prompt": {
+          "text": "You are the editor of 'vibecheck', an AI newsletter that empowers readers to feel informed and autonomous about AI developments.\n\nAnalyze these items and classify each into the newsletter structure. Be selective - only include genuinely interesting, actionable, or important content.\n\nITEMS TO ANALYZE:\n{{ JSON.stringify($json.items.slice(0, 40)) }}\n\nCLASSIFY INTO THESE SECTIONS:\n\n1. BREAKING (🔥) - Major announcements, product launches, significant updates from last 12 hours. Max 3 items.\n\n2. TOP_STORIES (⭐) - Highest quality/engagement content that everyone should know. Max 5 items.\n\n3. CREATIVE_TOOLS (🎨) - Midjourney, DALL-E, Stable Diffusion, Runway, Suno, AI art/music/video. Max 4 items.\n\n4. CODING_TOOLS (💻) - Cursor, Copilot, Claude Code, Windsurf, AI coding assistants, dev tools. Max 4 items.\n\n5. WRITING_TOOLS (✍️) - ChatGPT, Claude, writing assistants, content generation. Max 4 items.\n\n6. LIFE_PRODUCTIVITY (🧠) - AI agents, automation, personal AI, life optimization, workflows. Max 4 items.\n\n7. RESEARCH_FRONTIER (🔬) - Papers, breakthroughs, model releases, technical advances, safety. Max 3 items.\n\n8. COMMUNITY_PULSE (💬) - Hot debates, opinions, interesting discussions, sentiment. Max 3 items.\n\nFor each item, provide:\n- section: one of the section names above\n- title: cleaned up title (fix caps, remove [tags])\n- summary: 1-2 sentence engaging summary that tells readers why they should care\n- url: original URL\n- source: where it came from\n- priority: 1-10 (10 = must read)\n\nReturn ONLY valid JSON array, no markdown:\n[{\"section\":\"...\",\"title\":\"...\",\"summary\":\"...\",\"url\":\"...\",\"source\":\"...\",\"priority\":10}]"
+        },
+        "options": {"temperature": 0.3, "maxOutputTokens": 4000}
+      },
+      "id": "classify",
+      "name": "AI Classify & Summarize",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [750, 300],
+      "credentials": {"googlePalmApi": {"id": "vibecheck-googleai-001", "name": "Google AI (vibecheck free)"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst text = response.response?.text || response.text || JSON.stringify(response);\n\nlet items = [];\ntry {\n  const match = text.match(/\\[.*\\]/s);\n  if (match) items = JSON.parse(match[0]);\n} catch(e) {\n  return [{ json: { error: 'Failed to parse AI response', raw: text } }];\n}\n\n// Organize by section\nconst sections = {\n  BREAKING: [],\n  TOP_STORIES: [],\n  CREATIVE_TOOLS: [],\n  CODING_TOOLS: [],\n  WRITING_TOOLS: [],\n  LIFE_PRODUCTIVITY: [],\n  RESEARCH_FRONTIER: [],\n  COMMUNITY_PULSE: []\n};\n\nfor (const item of items) {\n  const section = item.section?.toUpperCase().replace(/ /g, '_');\n  if (sections[section]) {\n    sections[section].push(item);\n  }\n}\n\n// Sort each section by priority\nfor (const key of Object.keys(sections)) {\n  sections[key].sort((a, b) => (b.priority || 5) - (a.priority || 5));\n}\n\nconst date = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\n\nreturn [{\n  json: {\n    date,\n    generated_at: new Date().toISOString(),\n    sections,\n    total_items: items.length\n  }\n}];"
+      },
+      "id": "organize",
+      "name": "Organize Sections",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst s = d.sections;\n\nconst renderSection = (emoji, title, items) => {\n  if (!items || items.length === 0) return '';\n  const itemsHtml = items.map(i => `\n    <div style=\"margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea;\">\n      <a href=\"${i.url}\" style=\"color: #1a1a2e; text-decoration: none; font-weight: 600; font-size: 16px;\">${i.title}</a>\n      <p style=\"color: #4a4a4a; margin: 8px 0 5px; font-size: 14px; line-height: 1.5;\">${i.summary}</p>\n      <span style=\"color: #888; font-size: 12px;\">via ${i.source}</span>\n    </div>\n  `).join('');\n  \n  return `\n    <div style=\"margin: 30px 0;\">\n      <h2 style=\"color: #1a1a2e; font-size: 20px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #eee;\">\n        ${emoji} ${title}\n      </h2>\n      ${itemsHtml}\n    </div>\n  `;\n};\n\nconst html = `\n<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>vibecheck - ${d.date}</title>\n</head>\n<body style=\"margin: 0; padding: 0; background: #f0f0f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\">\n  <div style=\"max-width: 650px; margin: 0 auto; background: white;\">\n    \n    <!-- Header -->\n    <div style=\"background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;\">\n      <h1 style=\"color: white; margin: 0; font-size: 36px; font-weight: 700;\">vibecheck</h1>\n      <p style=\"color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 16px;\">Your AI World, Curated Daily</p>\n      <p style=\"color: rgba(255,255,255,0.7); margin: 5px 0 0; font-size: 14px;\">${d.date}</p>\n    </div>\n    \n    <!-- Intro -->\n    <div style=\"padding: 25px 30px; background: #fafafa; border-bottom: 1px solid #eee;\">\n      <p style=\"margin: 0; color: #4a4a4a; font-size: 15px; line-height: 1.6;\">\n        Good morning! Here's what's happening in AI today. ${d.total_items} stories curated from Reddit, Hacker News, Dev.to, and tech news.\n      </p>\n    </div>\n    \n    <!-- Content -->\n    <div style=\"padding: 20px 30px;\">\n      ${renderSection('🔥', 'BREAKING', s.BREAKING)}\n      ${renderSection('⭐', 'TOP STORIES', s.TOP_STORIES)}\n      ${renderSection('🎨', 'CREATIVE TOOLS', s.CREATIVE_TOOLS)}\n      ${renderSection('💻', 'CODING TOOLS', s.CODING_TOOLS)}\n      ${renderSection('✍️', 'WRITING TOOLS', s.WRITING_TOOLS)}\n      ${renderSection('🧠', 'LIFE & PRODUCTIVITY', s.LIFE_PRODUCTIVITY)}\n      ${renderSection('🔬', 'RESEARCH & FRONTIER', s.RESEARCH_FRONTIER)}\n      ${renderSection('💬', 'COMMUNITY PULSE', s.COMMUNITY_PULSE)}\n    </div>\n    \n    <!-- Footer -->\n    <div style=\"background: #1a1a2e; padding: 30px; text-align: center;\">\n      <p style=\"color: #888; margin: 0 0 10px; font-size: 14px;\">Curated with AI, delivered with love.</p>\n      <p style=\"color: #666; margin: 0; font-size: 12px;\">vibecheck • Keeping you informed and autonomous</p>\n      <p style=\"color: #555; margin: 15px 0 0; font-size: 11px;\">\n        <a href=\"https://n8n.wsig.me/webhook/vibecheck-signup\" style=\"color: #667eea;\">Manage Preferences</a> • \n        <a href=\"https://n8n.wsig.me/webhook/vibecheck-unsubscribe\" style=\"color: #667eea;\">Unsubscribe</a>\n      </p>\n    </div>\n    \n  </div>\n</body>\n</html>\n`;\n\nreturn [{ json: { html, ...d } }];"
+      },
+      "id": "render-html",
+      "name": "Render Newsletter HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO vibecheck_digests (generated_at, sections, html) VALUES ('{{ $json.generated_at }}', '{{ JSON.stringify($json.sections).replace(/'/g, \"''\") }}', '{{ $json.html.replace(/'/g, \"''\") }}') RETURNING id"
+      },
+      "id": "save-digest",
+      "name": "Save Digest",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1500, 200],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, email, name, delivery_method, telegram_chat_id FROM vibecheck_users WHERE active = true"
+      },
+      "id": "get-subscribers",
+      "name": "Get Subscribers",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1500, 400],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const digest = $('Render Newsletter HTML').first().json;\nconst subscribers = $('Get Subscribers').all();\n\nconst results = [];\nfor (const sub of subscribers) {\n  results.push({\n    json: {\n      user_id: sub.json.id,\n      email: sub.json.email,\n      name: sub.json.name,\n      delivery_method: sub.json.delivery_method,\n      telegram_chat_id: sub.json.telegram_chat_id,\n      html: digest.html,\n      date: digest.date,\n      sections: digest.sections\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "prepare-delivery",
+      "name": "Prepare Per-User Delivery",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1750, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {"leftValue": "={{ $json.delivery_method }}", "rightValue": "email", "operator": {"type": "string", "operation": "equals"}}
+          ]
+        }
+      },
+      "id": "is-email",
+      "name": "Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2000, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {"leftValue": "={{ $json.delivery_method }}", "rightValue": "telegram", "operator": {"type": "string", "operation": "equals"}}
+          ]
+        }
+      },
+      "id": "is-telegram",
+      "name": "Telegram?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2000, 400]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=vibecheck 🔥 {{ $json.date }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}"
+      },
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2250, 200],
+      "credentials": {"gmailOAuth2": {"id": "BEBNc8gPBjGPG6TM", "name": "Gmail account"}}
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegram_chat_id }}",
+        "text": "=🔥 *vibecheck* - {{ $json.date }}\n\nYour daily AI briefing is ready!\n\n{{ Object.entries($json.sections).filter(([k,v]) => v.length > 0).map(([section, items]) => {\n  const emoji = {BREAKING:'🔥',TOP_STORIES:'⭐',CREATIVE_TOOLS:'🎨',CODING_TOOLS:'💻',WRITING_TOOLS:'✍️',LIFE_PRODUCTIVITY:'🧠',RESEARCH_FRONTIER:'🔬',COMMUNITY_PULSE:'💬'}[section] || '📰';\n  return `${emoji} *${section.replace(/_/g, ' ')}*\\n${items.slice(0,2).map(i => `• [${i.title}](${i.url})`).join('\\n')}`;\n}).join('\\n\\n') }}\n\n_Full newsletter in your email!_",
+        "additionalFields": {"parse_mode": "Markdown", "disable_web_page_preview": true}
+      },
+      "id": "send-telegram",
+      "name": "Send Telegram Preview",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2250, 400],
+      "credentials": {"telegramApi": {"id": "rJyNUHrw87YVIOrc", "name": "WZigBot"}}
+    }
+  ],
+  "connections": {
+    "Daily 8AM ET": {"main": [[{"node": "Get Last 24h Content", "type": "main", "index": 0}]]},
+    "Get Last 24h Content": {"main": [[{"node": "Dedupe & Rank", "type": "main", "index": 0}]]},
+    "Dedupe & Rank": {"main": [[{"node": "AI Classify & Summarize", "type": "main", "index": 0}]]},
+    "AI Classify & Summarize": {"main": [[{"node": "Organize Sections", "type": "main", "index": 0}]]},
+    "Organize Sections": {"main": [[{"node": "Render Newsletter HTML", "type": "main", "index": 0}]]},
+    "Render Newsletter HTML": {"main": [[{"node": "Save Digest", "type": "main", "index": 0}, {"node": "Get Subscribers", "type": "main", "index": 0}]]},
+    "Get Subscribers": {"main": [[{"node": "Prepare Per-User Delivery", "type": "main", "index": 0}]]},
+    "Prepare Per-User Delivery": {"main": [[{"node": "Email?", "type": "main", "index": 0}, {"node": "Telegram?", "type": "main", "index": 0}]]},
+    "Email?": {"main": [[{"node": "Send Email", "type": "main", "index": 0}], []]},
+    "Telegram?": {"main": [[{"node": "Send Telegram Preview", "type": "main", "index": 0}], []]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false,
+  "versionId": "newsletter-digest-v1"
+}

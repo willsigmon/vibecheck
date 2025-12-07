@@ -1,0 +1,96 @@
+{
+  "name": "vibecheck-onboarding",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "vibecheck-signup",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-form",
+      "name": "Signup Form",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "vibecheck-signup-form"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!DOCTYPE html>\n<html><head>\n<title>vibecheck - Personalized AI Tips</title>\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<style>\n* { box-sizing: border-box; }\nbody { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; margin: 0; padding: 20px; }\n.container { max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }\nh1 { color: #333; margin: 0 0 10px; font-size: 28px; }\n.subtitle { color: #666; margin-bottom: 25px; }\nlabel { display: block; color: #333; font-weight: 600; margin: 15px 0 5px; }\ninput, select, textarea { width: 100%; padding: 12px; border: 2px solid #e1e1e1; border-radius: 8px; font-size: 16px; transition: border-color 0.2s; }\ninput:focus, select:focus, textarea:focus { outline: none; border-color: #667eea; }\n.tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }\n.tool-item { display: flex; align-items: center; gap: 8px; padding: 10px; background: #f7f7f7; border-radius: 8px; cursor: pointer; }\n.tool-item:hover { background: #eef; }\n.tool-item input { width: auto; }\nbutton { width: 100%; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: 600; cursor: pointer; margin-top: 20px; transition: transform 0.2s; }\nbutton:hover { transform: translateY(-2px); }\n.note { color: #888; font-size: 14px; margin-top: 15px; text-align: center; }\n</style>\n</head><body>\n<div class=\"container\">\n<h1>vibecheck</h1>\n<p class=\"subtitle\">Get personalized AI coding tips delivered to you</p>\n<form action=\"/webhook/vibecheck-register\" method=\"POST\">\n<label>Name</label>\n<input type=\"text\" name=\"name\" required placeholder=\"Your name\">\n\n<label>Email</label>\n<input type=\"email\" name=\"email\" required placeholder=\"you@example.com\">\n\n<label>Skill Level</label>\n<select name=\"skill_level\">\n<option value=\"beginner\">Beginner - Learning the basics</option>\n<option value=\"intermediate\" selected>Intermediate - Building projects</option>\n<option value=\"advanced\">Advanced - Optimizing workflows</option>\n</select>\n\n<label>Your Tools (select all that apply)</label>\n<div class=\"tools-grid\">\n<label class=\"tool-item\"><input type=\"checkbox\" name=\"tools\" value=\"cursor\"> Cursor IDE</label>\n<label class=\"tool-item\"><input type=\"checkbox\" name=\"tools\" value=\"copilot\"> GitHub Copilot</label>\n<label class=\"tool-item\"><input type=\"checkbox\" name=\"tools\" value=\"claude\"> Claude Code</label>\n<label class=\"tool-item\"><input type=\"checkbox\" name=\"tools\" value=\"windsurf\"> Windsurf</label>\n<label class=\"tool-item\"><input type=\"checkbox\" name=\"tools\" value=\"chatgpt\"> ChatGPT</label>\n<label class=\"tool-item\"><input type=\"checkbox\" name=\"tools\" value=\"vscode\"> VS Code</label>\n</div>\n\n<label>Interests</label>\n<textarea name=\"interests\" rows=\"2\" placeholder=\"e.g., React, Python, DevOps, AI/ML\"></textarea>\n\n<label>Favorite Subreddit (for content)</label>\n<select name=\"subreddit\">\n<option value=\"programming\">r/programming</option>\n<option value=\"cursor\">r/cursor</option>\n<option value=\"GithubCopilot\">r/GithubCopilot</option>\n<option value=\"ChatGPT\">r/ChatGPT</option>\n<option value=\"LocalLLaMA\">r/LocalLLaMA</option>\n<option value=\"webdev\">r/webdev</option>\n<option value=\"learnprogramming\">r/learnprogramming</option>\n</select>\n\n<label>How to reach you?</label>\n<select name=\"delivery_method\" onchange=\"document.getElementById('telegram-field').style.display=this.value==='telegram'?'block':'none'\">\n<option value=\"email\">Email</option>\n<option value=\"telegram\">Telegram</option>\n</select>\n\n<div id=\"telegram-field\" style=\"display:none\">\n<label>Telegram Chat ID (message @userinfobot to get it)</label>\n<input type=\"text\" name=\"telegram_chat_id\" placeholder=\"123456789\">\n</div>\n\n<button type=\"submit\">Start Getting Tips</button>\n</form>\n<p class=\"note\">Free service powered by AI. Tips delivered during US business hours.</p>\n</div>\n</body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [{"name": "Content-Type", "value": "text/html"}]
+          }
+        }
+      },
+      "id": "respond-form",
+      "name": "Show Form",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [250, 0]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vibecheck-register",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-register",
+      "name": "Register User",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 250],
+      "webhookId": "vibecheck-register"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\nconst tools = Array.isArray(body.tools) ? body.tools.join(', ') : body.tools || '';\n\n// Generate search terms based on tools and interests\nconst searchTerms = [];\nif (tools.includes('cursor')) searchTerms.push('.cursorrules', 'cursor tips');\nif (tools.includes('copilot')) searchTerms.push('copilot tips', 'copilot settings');\nif (tools.includes('claude')) searchTerms.push('claude code', 'anthropic tips');\nif (body.interests) searchTerms.push(...body.interests.split(',').map(s => s.trim()));\nconst search = searchTerms.length ? searchTerms.slice(0, 5).join(' OR ') : 'tips OR workflow';\n\n// HN query\nconst hnQuery = tools ? tools.split(', ').slice(0, 2).join(' OR ') + ' tips' : 'programming tips';\n\nreturn [{\n  json: {\n    email: body.email,\n    name: body.name,\n    skill_level: body.skill_level || 'intermediate',\n    tools: tools,\n    interests: body.interests || '',\n    subreddit: body.subreddit || 'programming',\n    search_terms: search,\n    hn_query: hnQuery,\n    delivery_method: body.delivery_method || 'email',\n    telegram_chat_id: body.telegram_chat_id || null\n  }\n}];"
+      },
+      "id": "process-form",
+      "name": "Process Form Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [250, 250]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO vibecheck_users (email, name, skill_level, tools, interests, subreddit, search_terms, hn_query, delivery_method, telegram_chat_id) VALUES ('{{ $json.email }}', '{{ $json.name }}', '{{ $json.skill_level }}', '{{ $json.tools }}', '{{ $json.interests }}', '{{ $json.subreddit }}', '{{ $json.search_terms }}', '{{ $json.hn_query }}', '{{ $json.delivery_method }}', {{ $json.telegram_chat_id ? \"'\" + $json.telegram_chat_id + \"'\" : 'NULL' }}) ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, skill_level = EXCLUDED.skill_level, tools = EXCLUDED.tools, interests = EXCLUDED.interests, subreddit = EXCLUDED.subreddit, search_terms = EXCLUDED.search_terms, hn_query = EXCLUDED.hn_query, delivery_method = EXCLUDED.delivery_method, telegram_chat_id = EXCLUDED.telegram_chat_id, active = true RETURNING id, email, name"
+      },
+      "id": "save-user",
+      "name": "Save User",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [500, 250],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!DOCTYPE html>\n<html><head>\n<title>Welcome to vibecheck!</title>\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<style>\nbody { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; margin: 0; display: flex; align-items: center; justify-content: center; padding: 20px; }\n.container { max-width: 500px; background: white; border-radius: 16px; padding: 40px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }\n.checkmark { width: 80px; height: 80px; background: #10B981; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }\n.checkmark svg { width: 40px; height: 40px; stroke: white; stroke-width: 3; }\nh1 { color: #333; margin: 0 0 10px; }\np { color: #666; line-height: 1.6; }\n.email { background: #f0f0f0; padding: 10px 20px; border-radius: 8px; display: inline-block; margin: 15px 0; font-family: monospace; }\n</style>\n</head><body>\n<div class=\"container\">\n<div class=\"checkmark\"><svg viewBox=\"0 0 24 24\" fill=\"none\"><path d=\"M5 13l4 4L19 7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></div>\n<h1>You're in!</h1>\n<p>Welcome to vibecheck, <strong>{{ $('Save User').item.json.name || $json.name }}</strong>!</p>\n<p class=\"email\">{{ $('Save User').item.json.email || $json.email }}</p>\n<p>You'll start receiving personalized AI coding tips during US business hours (9AM-9PM ET).</p>\n<p>Tips are curated based on your skill level and tools. The more specific your interests, the better your tips!</p>\n</div>\n</body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [{"name": "Content-Type", "value": "text/html"}]
+          }
+        }
+      },
+      "id": "respond-success",
+      "name": "Success Page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [750, 250]
+    }
+  ],
+  "connections": {
+    "Signup Form": {"main": [[{"node": "Show Form", "type": "main", "index": 0}]]},
+    "Register User": {"main": [[{"node": "Process Form Data", "type": "main", "index": 0}]]},
+    "Process Form Data": {"main": [[{"node": "Save User", "type": "main", "index": 0}]]},
+    "Save User": {"main": [[{"node": "Success Page", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false,
+  "versionId": "onboarding-v1"
+}

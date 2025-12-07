@@ -1,0 +1,191 @@
+{
+  "name": "vibecheck-newsletter-sources",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {"interval": [{"field": "hours", "hoursInterval": 2}]}
+      },
+      "id": "schedule",
+      "name": "Every 2 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/artificial+MachineLearning+singularity+ChatGPT+LocalLLaMA+ClaudeAI+StableDiffusion+midjourney/hot.json",
+        "sendQuery": true,
+        "queryParameters": {"parameters": [{"name": "limit", "value": "50"}]},
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "headers": {"parameters": [{"name": "User-Agent", "value": "vibecheck-newsletter/1.0"}]}
+        }
+      },
+      "id": "reddit-ai",
+      "name": "Reddit AI Subs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 100]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/cursor+GithubCopilot+windsurf/hot.json",
+        "sendQuery": true,
+        "queryParameters": {"parameters": [{"name": "limit", "value": "30"}]},
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "headers": {"parameters": [{"name": "User-Agent", "value": "vibecheck-newsletter/1.0"}]}
+        }
+      },
+      "id": "reddit-coding",
+      "name": "Reddit Coding Tools",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 250]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://hn.algolia.com/api/v1/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "query", "value": "AI OR GPT OR Claude OR LLM OR \"machine learning\" OR OpenAI OR Anthropic"},
+            {"name": "tags", "value": "story"},
+            {"name": "numericFilters", "value": "points>20,created_at_i>{{ $now.minus(2, 'days').toSeconds() }}"},
+            {"name": "hitsPerPage", "value": "50"}
+          ]
+        },
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "hackernews",
+      "name": "Hacker News AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://dev.to/api/articles",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "tag", "value": "ai"},
+            {"name": "per_page", "value": "30"},
+            {"name": "top", "value": "7"}
+          ]
+        },
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "devto",
+      "name": "Dev.to AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 550]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.producthunt.com/v2/api/graphql",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Authorization", "value": "Bearer {{ $env.PRODUCTHUNT_TOKEN }}"},
+            {"name": "Content-Type", "value": "application/json"}
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "query", "value": "{ posts(first: 20, topic: \"artificial-intelligence\") { edges { node { name tagline url votesCount createdAt } } } }"}
+          ]
+        },
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "producthunt",
+      "name": "Product Hunt AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 700],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "rss-techcrunch",
+      "name": "TechCrunch AI RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 850]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "rss-verge",
+      "name": "The Verge AI RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 850]
+    },
+    {
+      "parameters": {"mode": "combine", "combineBy": "combineAll", "options": {}},
+      "id": "merge-all",
+      "name": "Merge All Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [750, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = [];\nconst now = Date.now();\nconst seen = new Set();\n\nfor (const input of $input.all()) {\n  const d = input.json;\n  \n  // Reddit\n  if (d.data?.children) {\n    for (const child of d.data.children) {\n      const p = child.data;\n      if (p.score < 10) continue;\n      const key = p.title.toLowerCase().substring(0, 60);\n      if (seen.has(key)) continue;\n      seen.add(key);\n      \n      items.push({\n        source: 'reddit',\n        subreddit: p.subreddit,\n        title: p.title,\n        content: (p.selftext || '').substring(0, 800),\n        url: `https://reddit.com${p.permalink}`,\n        score: p.score,\n        comments: p.num_comments,\n        created: new Date(p.created_utc * 1000).toISOString(),\n        age_hours: Math.round((now - p.created_utc * 1000) / 3600000),\n        author: p.author,\n        flair: p.link_flair_text || ''\n      });\n    }\n  }\n  \n  // Hacker News\n  if (d.hits) {\n    for (const h of d.hits) {\n      if (h.points < 20) continue;\n      const key = h.title.toLowerCase().substring(0, 60);\n      if (seen.has(key)) continue;\n      seen.add(key);\n      \n      items.push({\n        source: 'hackernews',\n        title: h.title,\n        content: (h.story_text || '').substring(0, 800),\n        url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,\n        hn_url: `https://news.ycombinator.com/item?id=${h.objectID}`,\n        score: h.points,\n        comments: h.num_comments,\n        created: h.created_at,\n        age_hours: Math.round((now - new Date(h.created_at).getTime()) / 3600000),\n        author: h.author\n      });\n    }\n  }\n  \n  // Dev.to\n  if (Array.isArray(d)) {\n    for (const a of d) {\n      if (a.positive_reactions_count < 10) continue;\n      const key = a.title.toLowerCase().substring(0, 60);\n      if (seen.has(key)) continue;\n      seen.add(key);\n      \n      items.push({\n        source: 'devto',\n        title: a.title,\n        content: (a.description || '').substring(0, 800),\n        url: a.url,\n        score: a.positive_reactions_count,\n        comments: a.comments_count,\n        created: a.published_at,\n        age_hours: Math.round((now - new Date(a.published_at).getTime()) / 3600000),\n        author: a.user?.username,\n        tags: a.tag_list || []\n      });\n    }\n  }\n  \n  // RSS feeds (XML)\n  if (typeof d === 'string' && d.includes('<rss') || d.includes('<feed')) {\n    const titleMatches = d.match(/<title>([^<]+)<\\/title>/g) || [];\n    const linkMatches = d.match(/<link>([^<]+)<\\/link>/g) || [];\n    const pubDateMatches = d.match(/<pubDate>([^<]+)<\\/pubDate>/g) || [];\n    \n    for (let i = 1; i < Math.min(titleMatches.length, 15); i++) {\n      const title = titleMatches[i]?.replace(/<\\/?title>/g, '') || '';\n      const link = linkMatches[i]?.replace(/<\\/?link>/g, '') || '';\n      const pubDate = pubDateMatches[i-1]?.replace(/<\\/?pubDate>/g, '') || '';\n      \n      if (!title || !link) continue;\n      const key = title.toLowerCase().substring(0, 60);\n      if (seen.has(key)) continue;\n      seen.add(key);\n      \n      items.push({\n        source: 'rss',\n        title: title,\n        content: '',\n        url: link,\n        score: 50,\n        created: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),\n        age_hours: pubDate ? Math.round((now - new Date(pubDate).getTime()) / 3600000) : 0\n      });\n    }\n  }\n}\n\n// Sort by score and recency combined\nitems.sort((a, b) => {\n  const scoreA = a.score * (1 / Math.max(1, a.age_hours / 24));\n  const scoreB = b.score * (1 / Math.max(1, b.age_hours / 24));\n  return scoreB - scoreA;\n});\n\nreturn [{\n  json: {\n    fetched_at: new Date().toISOString(),\n    total_items: items.length,\n    items: items.slice(0, 100)\n  }\n}];"
+      },
+      "id": "normalize",
+      "name": "Normalize All Sources",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO vibecheck_raw_content (fetched_at, content) VALUES ('{{ $json.fetched_at }}', '{{ JSON.stringify($json).replace(/'/g, \"''\") }}') RETURNING id"
+      },
+      "id": "save-raw",
+      "name": "Save Raw Content",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1250, 400],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    }
+  ],
+  "connections": {
+    "Every 2 Hours": {"main": [[
+      {"node": "Reddit AI Subs", "type": "main", "index": 0},
+      {"node": "Reddit Coding Tools", "type": "main", "index": 0},
+      {"node": "Hacker News AI", "type": "main", "index": 0},
+      {"node": "Dev.to AI", "type": "main", "index": 0},
+      {"node": "TechCrunch AI RSS", "type": "main", "index": 0},
+      {"node": "The Verge AI RSS", "type": "main", "index": 0}
+    ]]},
+    "Reddit AI Subs": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]},
+    "Reddit Coding Tools": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]},
+    "Hacker News AI": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]},
+    "Dev.to AI": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]},
+    "TechCrunch AI RSS": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]},
+    "The Verge AI RSS": {"main": [[{"node": "Merge All Sources", "type": "main", "index": 0}]]},
+    "Merge All Sources": {"main": [[{"node": "Normalize All Sources", "type": "main", "index": 0}]]},
+    "Normalize All Sources": {"main": [[{"node": "Save Raw Content", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false,
+  "versionId": "newsletter-sources-v1"
+}

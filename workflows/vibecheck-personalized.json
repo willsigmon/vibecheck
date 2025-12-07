@@ -1,0 +1,208 @@
+{
+  "name": "vibecheck-personalized",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "hours", "hoursInterval": 1}]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Hourly (Business Hours)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM vibecheck_users WHERE active = true"
+      },
+      "id": "get-users",
+      "name": "Get Active Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [200, 300],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/{{ $json.subreddit }}/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "q", "value": "{{ $json.search_terms }}"},
+            {"name": "sort", "value": "new"},
+            {"name": "restrict_sr", "value": "on"},
+            {"name": "limit", "value": "15"},
+            {"name": "t", "value": "day"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "headers": {"parameters": [{"name": "User-Agent", "value": "vibecheck/2.0"}]}
+        }
+      },
+      "id": "fetch-reddit",
+      "name": "Fetch Reddit (Per User)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://hn.algolia.com/api/v1/search_by_date",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "query", "value": "{{ $json.hn_query }}"},
+            {"name": "tags", "value": "story"},
+            {"name": "numericFilters", "value": "created_at_i>{{ $now.minus(1, 'days').toSeconds() }}"}
+          ]
+        },
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "fetch-hn",
+      "name": "Fetch HN (Per User)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const user = $('Get Active Users').item.json;\nconst reddit = $('Fetch Reddit (Per User)').item.json;\nconst hn = $('Fetch HN (Per User)').item.json;\n\nconst posts = [];\n\n// Process Reddit\nif (reddit.data?.children) {\n  for (const child of reddit.data.children) {\n    const post = child.data;\n    if (post.score >= 3) {\n      posts.push({\n        source: 'reddit',\n        title: post.title,\n        content: post.selftext?.substring(0, 1500) || '',\n        url: `https://reddit.com${post.permalink}`,\n        score: post.score\n      });\n    }\n  }\n}\n\n// Process HN\nif (hn.hits) {\n  for (const hit of hn.hits) {\n    if (hit.points >= 5) {\n      posts.push({\n        source: 'hn',\n        title: hit.title,\n        content: hit.story_text?.substring(0, 1500) || '',\n        url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,\n        score: hit.points\n      });\n    }\n  }\n}\n\nreturn [{\n  json: {\n    user_id: user.id,\n    user_email: user.email,\n    user_name: user.name,\n    skill_level: user.skill_level,\n    tools: user.tools,\n    interests: user.interests,\n    delivery: user.delivery_method,\n    telegram_chat_id: user.telegram_chat_id,\n    posts: posts.slice(0, 20)\n  }\n}];"
+      },
+      "id": "merge-normalize",
+      "name": "Merge & Add User Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "model": "models/gemini-2.0-flash",
+        "prompt": {
+          "text": "You are a personalized AI coding assistant. Analyze these posts and extract tips SPECIFICALLY relevant to this user:\n\nUSER PROFILE:\n- Name: {{ $json.user_name }}\n- Skill Level: {{ $json.skill_level }}\n- Tools: {{ $json.tools }}\n- Interests: {{ $json.interests }}\n\nPOSTS TO ANALYZE:\n{{ JSON.stringify($json.posts) }}\n\nRULES:\n1. ONLY extract tips relevant to their tools and skill level\n2. For beginners: focus on basics, setup, common mistakes\n3. For advanced: focus on optimization, hidden features, pro workflows\n4. Reject spam, complaints, outdated info\n5. Personalize the insight text to speak directly to them\n\nReturn JSON array (empty if nothing relevant):\n[{\"quality_score\": 1-10, \"insight\": \"personalized tip\", \"category\": \"workflow|shortcut|config|tip\", \"source_url\": \"url\", \"why_relevant\": \"brief explanation why this matters for this user\"}]"
+        },
+        "options": {"temperature": 0.3, "maxOutputTokens": 2000}
+      },
+      "id": "personalized-analysis",
+      "name": "Personalized AI Analysis",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [950, 300],
+      "credentials": {"googlePalmApi": {"id": "vibecheck-googleai-001", "name": "Google AI (vibecheck free)"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst response = input.response?.text || input.text || '';\nconst user = $('Merge & Add User Context').item.json;\n\nlet tips = [];\ntry {\n  const match = response.match(/\\[.*\\]/s);\n  if (match) tips = JSON.parse(match[0]);\n} catch(e) {}\n\n// Filter to quality >= 7\ntips = tips.filter(t => t.quality_score >= 7);\n\nif (tips.length === 0) {\n  return [{ json: { skip: true, user_id: user.user_id } }];\n}\n\nreturn [{\n  json: {\n    user_id: user.user_id,\n    user_email: user.user_email,\n    user_name: user.user_name,\n    delivery: user.delivery,\n    telegram_chat_id: user.telegram_chat_id,\n    tips: tips,\n    generated_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "parse-tips",
+      "name": "Parse Personalized Tips",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {"leftValue": "={{ $json.skip }}", "rightValue": true, "operator": {"type": "boolean", "operation": "notEquals"}}
+          ]
+        }
+      },
+      "id": "filter-empty",
+      "name": "Has Tips?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1400, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO vibecheck_tips (user_id, tips, created_at) VALUES ({{ $json.user_id }}, '{{ JSON.stringify($json.tips).replace(/'/g, \"''\") }}', NOW())"
+      },
+      "id": "save-tips",
+      "name": "Save to User KB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1600, 200],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {"leftValue": "={{ $json.delivery }}", "rightValue": "telegram", "operator": {"type": "string", "operation": "equals"}}
+          ]
+        }
+      },
+      "id": "check-telegram",
+      "name": "Telegram User?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1600, 400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegram_chat_id }}",
+        "text": "=🎯 *vibecheck* - {{ $json.tips.length }} new tips for you!\n\n{{ $json.tips.map((t, i) => `${i+1}. *${t.category.toUpperCase()}* (Score: ${t.quality_score}/10)\n${t.insight}\n_Why for you: ${t.why_relevant}_\n[Source](${t.source_url})`).join('\\n\\n') }}",
+        "additionalFields": {"parse_mode": "Markdown", "disable_web_page_preview": true}
+      },
+      "id": "send-telegram",
+      "name": "Send Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1850, 350],
+      "credentials": {"telegramApi": {"id": "rJyNUHrw87YVIOrc", "name": "WZigBot"}}
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {"leftValue": "={{ $json.delivery }}", "rightValue": "email", "operator": {"type": "string", "operation": "equals"}}
+          ]
+        }
+      },
+      "id": "check-email",
+      "name": "Email User?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1600, 550]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.user_email }}",
+        "subject": "=vibecheck: {{ $json.tips.length }} personalized tips",
+        "emailType": "html",
+        "message": "=<h2>Hey {{ $json.user_name }}!</h2><p>Found {{ $json.tips.length }} tips just for you:</p><hr>{{ $json.tips.map(t => `<div style=\"margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 8px;\"><strong>${t.category.toUpperCase()}</strong> (Score: ${t.quality_score}/10)<br><p>${t.insight}</p><small><em>Why this matters for you: ${t.why_relevant}</em></small><br><a href=\"${t.source_url}\">Source</a></div>`).join('') }}<hr><p><small>vibecheck - AI coding tips on autopilot</small></p>"
+      },
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1850, 550],
+      "credentials": {"gmailOAuth2": {"id": "BEBNc8gPBjGPG6TM", "name": "Gmail account"}}
+    }
+  ],
+  "connections": {
+    "Hourly (Business Hours)": {"main": [[{"node": "Get Active Users", "type": "main", "index": 0}]]},
+    "Get Active Users": {"main": [[{"node": "Fetch Reddit (Per User)", "type": "main", "index": 0}, {"node": "Fetch HN (Per User)", "type": "main", "index": 0}]]},
+    "Fetch Reddit (Per User)": {"main": [[{"node": "Merge & Add User Context", "type": "main", "index": 0}]]},
+    "Fetch HN (Per User)": {"main": [[{"node": "Merge & Add User Context", "type": "main", "index": 0}]]},
+    "Merge & Add User Context": {"main": [[{"node": "Personalized AI Analysis", "type": "main", "index": 0}]]},
+    "Personalized AI Analysis": {"main": [[{"node": "Parse Personalized Tips", "type": "main", "index": 0}]]},
+    "Parse Personalized Tips": {"main": [[{"node": "Has Tips?", "type": "main", "index": 0}]]},
+    "Has Tips?": {"main": [[{"node": "Save to User KB", "type": "main", "index": 0}, {"node": "Check Telegram User?", "type": "main", "index": 0}, {"node": "Check Email User?", "type": "main", "index": 0}]]},
+    "Check Telegram User?": {"main": [[{"node": "Send Telegram", "type": "main", "index": 0}], []]},
+    "Check Email User?": {"main": [[{"node": "Send Email", "type": "main", "index": 0}], []]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false,
+  "versionId": "personalized-v1"
+}
