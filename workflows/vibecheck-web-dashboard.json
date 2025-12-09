@@ -1,0 +1,152 @@
+{
+  "name": "vibecheck-web-dashboard",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "vibecheck",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "landing-webhook",
+      "name": "Landing Page",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "vibecheck-landing"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as subscribers FROM vibecheck_users WHERE active = true"
+      },
+      "id": "get-stats",
+      "name": "Get Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [250, 0],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>vibecheck - Your AI World, Curated Daily</title>\n  <meta name=\"description\" content=\"The AI newsletter that empowers you. Daily curated insights from Reddit, Hacker News, ArXiv, and 15+ sources.\">\n  <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n  <link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap\" rel=\"stylesheet\">\n  <style>\n    * { margin: 0; padding: 0; box-sizing: border-box; }\n    body { font-family: 'Inter', -apple-system, sans-serif; background: #0a0a0f; color: #fff; line-height: 1.6; }\n    .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%); }\n    .hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 40px 20px; position: relative; overflow: hidden; }\n    .hero::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at 30% 20%, rgba(102, 126, 234, 0.3) 0%, transparent 50%), radial-gradient(circle at 70% 80%, rgba(118, 75, 162, 0.3) 0%, transparent 50%); }\n    .hero-content { position: relative; z-index: 1; max-width: 800px; }\n    .logo { font-size: 72px; font-weight: 800; background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 20px; }\n    .tagline { font-size: 24px; color: rgba(255,255,255,0.9); margin-bottom: 30px; font-weight: 500; }\n    .description { font-size: 18px; color: rgba(255,255,255,0.7); margin-bottom: 40px; max-width: 600px; }\n    .cta-button { display: inline-block; padding: 18px 40px; background: #fff; color: #1a1a2e; font-size: 18px; font-weight: 600; border-radius: 50px; text-decoration: none; transition: all 0.3s; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }\n    .cta-button:hover { transform: translateY(-3px); box-shadow: 0 15px 50px rgba(0,0,0,0.4); }\n    .stats { display: flex; gap: 50px; margin-top: 60px; justify-content: center; flex-wrap: wrap; }\n    .stat { text-align: center; }\n    .stat-number { font-size: 48px; font-weight: 700; background: linear-gradient(135deg, #667eea, #f093fb); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }\n    .stat-label { color: rgba(255,255,255,0.6); font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }\n    .features { padding: 100px 20px; background: #111118; }\n    .features-grid { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; }\n    .feature-card { background: linear-gradient(135deg, #1a1a2e 0%, #16162a 100%); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); }\n    .feature-icon { font-size: 40px; margin-bottom: 20px; }\n    .feature-title { font-size: 22px; font-weight: 600; margin-bottom: 15px; }\n    .feature-desc { color: rgba(255,255,255,0.6); }\n    .sections { padding: 80px 20px; }\n    .sections-title { text-align: center; font-size: 36px; font-weight: 700; margin-bottom: 50px; }\n    .sections-grid { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }\n    .section-card { background: rgba(255,255,255,0.05); padding: 25px; border-radius: 15px; text-align: center; transition: all 0.3s; }\n    .section-card:hover { background: rgba(255,255,255,0.1); transform: translateY(-5px); }\n    .section-emoji { font-size: 36px; margin-bottom: 10px; }\n    .section-name { font-weight: 600; }\n    footer { padding: 50px 20px; text-align: center; border-top: 1px solid rgba(255,255,255,0.1); }\n    footer a { color: #667eea; text-decoration: none; }\n  </style>\n</head>\n<body>\n  <section class=\"hero\">\n    <div class=\"hero-content\">\n      <h1 class=\"logo\">vibecheck</h1>\n      <p class=\"tagline\">Your AI World, Curated Daily</p>\n      <p class=\"description\">Stop drowning in AI news. Get the signal, not the noise. We aggregate 15+ sources, let AI do the heavy lifting, and deliver only what matters - straight to your inbox.</p>\n      <a href=\"/webhook/vibecheck-signup\" class=\"cta-button\">Subscribe Free →</a>\n      <div class=\"stats\">\n        <div class=\"stat\">\n          <div class=\"stat-number\">{{ $json.subscribers || '0' }}</div>\n          <div class=\"stat-label\">Subscribers</div>\n        </div>\n        <div class=\"stat\">\n          <div class=\"stat-number\">15+</div>\n          <div class=\"stat-label\">Sources</div>\n        </div>\n        <div class=\"stat\">\n          <div class=\"stat-number\">8</div>\n          <div class=\"stat-label\">Sections</div>\n        </div>\n      </div>\n    </div>\n  </section>\n  \n  <section class=\"features\">\n    <div class=\"features-grid\">\n      <div class=\"feature-card\">\n        <div class=\"feature-icon\">🤖</div>\n        <h3 class=\"feature-title\">AI-Powered Curation</h3>\n        <p class=\"feature-desc\">Gemini analyzes hundreds of posts daily, extracting only the most actionable insights and filtering out the noise.</p>\n      </div>\n      <div class=\"feature-card\">\n        <div class=\"feature-icon\">📡</div>\n        <h3 class=\"feature-title\">15+ Sources</h3>\n        <p class=\"feature-desc\">Reddit, Hacker News, ArXiv, GitHub, Dev.to, TechCrunch, The Verge, Wired, and more - all in one place.</p>\n      </div>\n      <div class=\"feature-card\">\n        <div class=\"feature-icon\">⚡</div>\n        <h3 class=\"feature-title\">Breaking News Alerts</h3>\n        <p class=\"feature-desc\">Get instant notifications for major AI announcements. Never miss a GPT-5 or Claude 4 launch again.</p>\n      </div>\n      <div class=\"feature-card\">\n        <div class=\"feature-icon\">📱</div>\n        <h3 class=\"feature-title\">Multi-Channel</h3>\n        <p class=\"feature-desc\">Email, Telegram, Discord, Slack, RSS - get your news wherever you want it.</p>\n      </div>\n    </div>\n  </section>\n  \n  <section class=\"sections\">\n    <h2 class=\"sections-title\">8 Curated Sections</h2>\n    <div class=\"sections-grid\">\n      <div class=\"section-card\"><div class=\"section-emoji\">🔥</div><div class=\"section-name\">Breaking</div></div>\n      <div class=\"section-card\"><div class=\"section-emoji\">⭐</div><div class=\"section-name\">Top Stories</div></div>\n      <div class=\"section-card\"><div class=\"section-emoji\">🎨</div><div class=\"section-name\">Creative Tools</div></div>\n      <div class=\"section-card\"><div class=\"section-emoji\">💻</div><div class=\"section-name\">Coding Tools</div></div>\n      <div class=\"section-card\"><div class=\"section-emoji\">✍️</div><div class=\"section-name\">Writing Tools</div></div>\n      <div class=\"section-card\"><div class=\"section-emoji\">🧠</div><div class=\"section-name\">Life & Productivity</div></div>\n      <div class=\"section-card\"><div class=\"section-emoji\">🔬</div><div class=\"section-name\">Research</div></div>\n      <div class=\"section-card\"><div class=\"section-emoji\">💬</div><div class=\"section-name\">Community</div></div>\n    </div>\n  </section>\n  \n  <footer>\n    <p style=\"margin-bottom: 15px;\"><a href=\"/webhook/vibecheck-signup\">Subscribe</a> • <a href=\"/webhook/vibecheck-archive\">Archive</a> • <a href=\"/webhook/vibecheck-rss\">RSS Feed</a></p>\n    <p style=\"color: rgba(255,255,255,0.4); font-size: 14px;\">Built with n8n + AI • Curated daily at 8AM ET</p>\n  </footer>\n</body>\n</html>",
+        "options": {"responseHeaders": {"entries": [{"name": "Content-Type", "value": "text/html"}]}}
+      },
+      "id": "render-landing",
+      "name": "Render Landing",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [500, 0]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "vibecheck-archive",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "archive-webhook",
+      "name": "Archive Page",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 250],
+      "webhookId": "vibecheck-archive"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, generated_at, sections FROM vibecheck_digests ORDER BY generated_at DESC LIMIT 30"
+      },
+      "id": "get-digests",
+      "name": "Get Digests",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [250, 250],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const digests = $input.all().map(d => d.json);\n\nconst digestCards = digests.map(d => {\n  const date = new Date(d.generated_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });\n  let sections = {};\n  try { sections = JSON.parse(d.sections); } catch(e) {}\n  const totalItems = Object.values(sections).flat().length;\n  \n  return `<a href=\"/webhook/vibecheck-digest/${d.id}\" class=\"digest-card\">\n    <div class=\"digest-date\">${date}</div>\n    <div class=\"digest-items\">${totalItems} stories</div>\n  </a>`;\n}).join('');\n\nconst html = `<!DOCTYPE html>\n<html><head>\n<meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>vibecheck Archive</title>\n<style>\nbody { font-family: 'Inter', -apple-system, sans-serif; background: #0a0a0f; color: #fff; padding: 40px 20px; }\n.container { max-width: 800px; margin: 0 auto; }\nh1 { font-size: 36px; margin-bottom: 10px; }\n.subtitle { color: rgba(255,255,255,0.6); margin-bottom: 40px; }\n.digests-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; }\n.digest-card { background: rgba(255,255,255,0.05); padding: 20px; border-radius: 12px; text-decoration: none; color: #fff; transition: all 0.3s; display: block; }\n.digest-card:hover { background: rgba(102, 126, 234, 0.2); transform: translateY(-3px); }\n.digest-date { font-weight: 600; margin-bottom: 5px; }\n.digest-items { font-size: 14px; color: rgba(255,255,255,0.5); }\n.back-link { color: #667eea; text-decoration: none; display: inline-block; margin-bottom: 30px; }\n</style>\n</head><body>\n<div class=\"container\">\n<a href=\"/webhook/vibecheck\" class=\"back-link\">← Back to vibecheck</a>\n<h1>Newsletter Archive</h1>\n<p class=\"subtitle\">Browse past issues</p>\n<div class=\"digests-grid\">${digestCards || '<p>No digests yet. Check back after 8AM ET!</p>'}</div>\n</div>\n</body></html>`;\n\nreturn [{ json: { html } }];"
+      },
+      "id": "render-archive",
+      "name": "Render Archive",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 250]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {"responseHeaders": {"entries": [{"name": "Content-Type", "value": "text/html"}]}}
+      },
+      "id": "respond-archive",
+      "name": "Send Archive",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [750, 250]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "vibecheck-rss",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "rss-webhook",
+      "name": "RSS Feed",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 500],
+      "webhookId": "vibecheck-rss"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, generated_at, sections FROM vibecheck_digests ORDER BY generated_at DESC LIMIT 10"
+      },
+      "id": "get-rss-digests",
+      "name": "Get RSS Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [250, 500],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const digests = $input.all().map(d => d.json);\n\nconst items = digests.map(d => {\n  const date = new Date(d.generated_at).toUTCString();\n  let sections = {};\n  try { sections = JSON.parse(d.sections); } catch(e) {}\n  \n  const topStories = (sections.TOP_STORIES || []).slice(0, 3).map(s => `<li><a href=\"${s.url}\">${s.title}</a> - ${s.summary}</li>`).join('');\n  const breaking = (sections.BREAKING || []).slice(0, 2).map(s => `<li><a href=\"${s.url}\">${s.title}</a></li>`).join('');\n  \n  const description = `<h3>Breaking</h3><ul>${breaking || '<li>None today</li>'}</ul><h3>Top Stories</h3><ul>${topStories || '<li>None today</li>'}</ul>`;\n  \n  return `<item>\n    <title>vibecheck - ${new Date(d.generated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</title>\n    <link>https://n8n.wsig.me/webhook/vibecheck-digest/${d.id}</link>\n    <description><![CDATA[${description}]]></description>\n    <pubDate>${date}</pubDate>\n    <guid>vibecheck-${d.id}</guid>\n  </item>`;\n}).join('\\n');\n\nconst rss = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n<channel>\n  <title>vibecheck - AI Newsletter</title>\n  <link>https://n8n.wsig.me/webhook/vibecheck</link>\n  <description>Your AI World, Curated Daily. AI news from 15+ sources, organized and summarized.</description>\n  <language>en-us</language>\n  <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>\n  <atom:link href=\"https://n8n.wsig.me/webhook/vibecheck-rss\" rel=\"self\" type=\"application/rss+xml\"/>\n  ${items}\n</channel>\n</rss>`;\n\nreturn [{ json: { rss } }];"
+      },
+      "id": "render-rss",
+      "name": "Render RSS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 500]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.rss }}",
+        "options": {"responseHeaders": {"entries": [{"name": "Content-Type", "value": "application/rss+xml"}]}}
+      },
+      "id": "respond-rss",
+      "name": "Send RSS",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [750, 500]
+    }
+  ],
+  "connections": {
+    "Landing Page": {"main": [[{"node": "Get Stats", "type": "main", "index": 0}]]},
+    "Get Stats": {"main": [[{"node": "Render Landing", "type": "main", "index": 0}]]},
+    "Archive Page": {"main": [[{"node": "Get Digests", "type": "main", "index": 0}]]},
+    "Get Digests": {"main": [[{"node": "Render Archive", "type": "main", "index": 0}]]},
+    "Render Archive": {"main": [[{"node": "Send Archive", "type": "main", "index": 0}]]},
+    "RSS Feed": {"main": [[{"node": "Get RSS Data", "type": "main", "index": 0}]]},
+    "Get RSS Data": {"main": [[{"node": "Render RSS", "type": "main", "index": 0}]]},
+    "Render RSS": {"main": [[{"node": "Send RSS", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false,
+  "versionId": "web-dashboard-v1"
+}

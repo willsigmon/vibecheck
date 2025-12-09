@@ -1,0 +1,127 @@
+{
+  "name": "bluebubbles-imessage",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "imessage/send",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "imessage-send"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BLUEBUBBLES_URL || 'http://100.113.246.72:1234' }}/api/v1/message/text",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "password", "value": "={{ $env.BLUEBUBBLES_PASSWORD }}"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chatGuid\": \"{{ $json.chat_guid || '' }}\",\n  \"tempGuid\": \"{{ $now.toMillis() }}-temp\",\n  \"message\": \"{{ $json.message }}\",\n  \"method\": \"{{ $json.method || 'private-api' }}\",\n  \"effectId\": \"{{ $json.effect || '' }}\",\n  \"subject\": \"{{ $json.subject || '' }}\",\n  \"selectedMessageGuid\": \"{{ $json.reply_to || '' }}\"\n}",
+        "options": {}
+      },
+      "id": "send-text",
+      "name": "Send iMessage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BLUEBUBBLES_URL || 'http://100.113.246.72:1234' }}/api/v1/chat/new",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "password", "value": "={{ $env.BLUEBUBBLES_PASSWORD }}"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"addresses\": {{ JSON.stringify($json.addresses || [$json.phone]) }},\n  \"message\": \"{{ $json.message }}\",\n  \"method\": \"{{ $json.method || 'private-api' }}\"\n}",
+        "options": {}
+      },
+      "id": "new-chat",
+      "name": "New Chat + Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {
+              "id": "has-chat-guid",
+              "leftValue": "={{ $json.chat_guid }}",
+              "rightValue": "",
+              "operator": {"type": "string", "operation": "notEmpty"}
+            }
+          ]
+        }
+      },
+      "id": "route-message",
+      "name": "Has Chat GUID?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst response = input.body || input;\n\nif (response.status === 200 || response.status === 201) {\n  return [{\n    json: {\n      success: true,\n      message_guid: response.data?.guid || response.data?.tempGuid,\n      chat_guid: response.data?.chats?.[0]?.guid || input.chat_guid,\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: false,\n    error: response.message || response.error || 'Unknown error',\n    status: response.status\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [920, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{"node": "Has Chat GUID?", "type": "main", "index": 0}]]
+    },
+    "Has Chat GUID?": {
+      "main": [
+        [{"node": "Send iMessage", "type": "main", "index": 0}],
+        [{"node": "New Chat + Message", "type": "main", "index": 0}]
+      ]
+    },
+    "Send iMessage": {
+      "main": [[{"node": "Format Response", "type": "main", "index": 0}]]
+    },
+    "New Chat + Message": {
+      "main": [[{"node": "Format Response", "type": "main", "index": 0}]]
+    },
+    "Format Response": {
+      "main": [[{"node": "Respond", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {"executionOrder": "v1"},
+  "staticData": null,
+  "meta": {
+    "description": "Send iMessages via BlueBubbles API. POST to /imessage/send with {phone, message} or {chat_guid, message}"
+  }
+}

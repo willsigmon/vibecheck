@@ -1,0 +1,83 @@
+{
+  "name": "vibecheck-weekly-digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {"interval": [{"field": "cronExpression", "expression": "0 9 * * 0"}]}
+      },
+      "id": "sunday-9am",
+      "name": "Sunday 9AM ET",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT sections FROM vibecheck_digests WHERE generated_at > NOW() - INTERVAL '7 days' ORDER BY generated_at DESC"
+      },
+      "id": "get-week-digests",
+      "name": "Get Week's Digests",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [250, 300],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const digests = $input.all().map(d => d.json);\nconst allItems = [];\nconst seen = new Set();\n\nfor (const digest of digests) {\n  let sections = {};\n  try { sections = JSON.parse(digest.sections); } catch(e) { continue; }\n  \n  for (const [section, items] of Object.entries(sections)) {\n    for (const item of items || []) {\n      const key = item.title?.toLowerCase().substring(0, 50);\n      if (key && !seen.has(key)) {\n        seen.add(key);\n        allItems.push({ ...item, section });\n      }\n    }\n  }\n}\n\n// Get top items by priority\nconst topItems = allItems\n  .sort((a, b) => (b.priority || 5) - (a.priority || 5))\n  .slice(0, 25);\n\n// Re-organize by section\nconst weekSections = {\n  TOP_STORIES: topItems.filter(i => i.section === 'TOP_STORIES' || i.priority >= 8).slice(0, 5),\n  CREATIVE_TOOLS: topItems.filter(i => i.section === 'CREATIVE_TOOLS').slice(0, 3),\n  CODING_TOOLS: topItems.filter(i => i.section === 'CODING_TOOLS').slice(0, 3),\n  WRITING_TOOLS: topItems.filter(i => i.section === 'WRITING_TOOLS').slice(0, 3),\n  LIFE_PRODUCTIVITY: topItems.filter(i => i.section === 'LIFE_PRODUCTIVITY').slice(0, 3),\n  RESEARCH_FRONTIER: topItems.filter(i => i.section === 'RESEARCH_FRONTIER').slice(0, 3),\n  COMMUNITY_PULSE: topItems.filter(i => i.section === 'COMMUNITY_PULSE').slice(0, 3)\n};\n\nconst weekStart = new Date();\nweekStart.setDate(weekStart.getDate() - 7);\nconst weekEnd = new Date();\n\nreturn [{\n  json: {\n    week_start: weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),\n    week_end: weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),\n    total_items: topItems.length,\n    sections: weekSections\n  }\n}];"
+      },
+      "id": "aggregate-week",
+      "name": "Aggregate Week",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst s = d.sections;\n\nconst renderSection = (emoji, title, items) => {\n  if (!items || items.length === 0) return '';\n  const itemsHtml = items.map(i => `\n    <div style=\"margin: 12px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #10B981;\">\n      <a href=\"${i.url}\" style=\"color: #1a1a2e; text-decoration: none; font-weight: 600;\">${i.title}</a>\n      <p style=\"color: #4a4a4a; margin: 8px 0 0; font-size: 14px;\">${i.summary || ''}</p>\n    </div>\n  `).join('');\n  \n  return `<div style=\"margin: 25px 0;\"><h2 style=\"color: #1a1a2e; font-size: 18px; margin-bottom: 12px;\">${emoji} ${title}</h2>${itemsHtml}</div>`;\n};\n\nconst html = `<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>vibecheck Weekly - ${d.week_end}</title></head>\n<body style=\"margin: 0; padding: 0; background: #f0f0f5; font-family: -apple-system, sans-serif;\">\n<div style=\"max-width: 650px; margin: 0 auto; background: white;\">\n<div style=\"background: linear-gradient(135deg, #10B981 0%, #059669 100%); padding: 40px 30px; text-align: center;\">\n  <h1 style=\"color: white; margin: 0; font-size: 32px;\">vibecheck Weekly</h1>\n  <p style=\"color: rgba(255,255,255,0.9); margin: 10px 0 0;\">${d.week_start} - ${d.week_end}</p>\n  <p style=\"color: rgba(255,255,255,0.7); margin: 5px 0 0; font-size: 14px;\">The best of AI this week</p>\n</div>\n<div style=\"padding: 25px 30px; background: #f0fdf4; border-bottom: 1px solid #d1fae5;\">\n  <p style=\"margin: 0; color: #065f46;\">📊 <strong>${d.total_items} top stories</strong> from the past 7 days, curated just for you.</p>\n</div>\n<div style=\"padding: 20px 30px;\">\n${renderSection('⭐', 'TOP STORIES OF THE WEEK', s.TOP_STORIES)}\n${renderSection('🎨', 'CREATIVE TOOLS', s.CREATIVE_TOOLS)}\n${renderSection('💻', 'CODING TOOLS', s.CODING_TOOLS)}\n${renderSection('✍️', 'WRITING TOOLS', s.WRITING_TOOLS)}\n${renderSection('🧠', 'LIFE & PRODUCTIVITY', s.LIFE_PRODUCTIVITY)}\n${renderSection('🔬', 'RESEARCH & FRONTIER', s.RESEARCH_FRONTIER)}\n${renderSection('💬', 'COMMUNITY PULSE', s.COMMUNITY_PULSE)}\n</div>\n<div style=\"background: #1a1a2e; padding: 30px; text-align: center;\">\n  <p style=\"color: #888; margin: 0 0 10px; font-size: 14px;\">That's a wrap for this week!</p>\n  <p style=\"color: #666; margin: 0; font-size: 12px;\">vibecheck Weekly • Every Sunday at 9AM ET</p>\n</div>\n</div></body></html>`;\n\nreturn [{ json: { html, ...d } }];"
+      },
+      "id": "render-weekly",
+      "name": "Render Weekly",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, email, name FROM vibecheck_users WHERE active = true AND weekly_digest = true"
+      },
+      "id": "get-weekly-subs",
+      "name": "Get Weekly Subscribers",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1000, 300],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Get Weekly Subscribers').first().json.email }}",
+        "subject": "=vibecheck Weekly 📊 {{ $('Render Weekly').first().json.week_start }} - {{ $('Render Weekly').first().json.week_end }}",
+        "emailType": "html",
+        "message": "={{ $('Render Weekly').first().json.html }}"
+      },
+      "id": "send-weekly",
+      "name": "Send Weekly Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1250, 300],
+      "credentials": {"gmailOAuth2": {"id": "BEBNc8gPBjGPG6TM", "name": "Gmail account"}}
+    }
+  ],
+  "connections": {
+    "Sunday 9AM ET": {"main": [[{"node": "Get Week's Digests", "type": "main", "index": 0}]]},
+    "Get Week's Digests": {"main": [[{"node": "Aggregate Week", "type": "main", "index": 0}]]},
+    "Aggregate Week": {"main": [[{"node": "Render Weekly", "type": "main", "index": 0}]]},
+    "Render Weekly": {"main": [[{"node": "Get Weekly Subscribers", "type": "main", "index": 0}]]},
+    "Get Weekly Subscribers": {"main": [[{"node": "Send Weekly Email", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false,
+  "versionId": "weekly-digest-v1"
+}

@@ -1,0 +1,178 @@
+{
+  "name": "vibecheck-breaking-alerts",
+  "nodes": [
+    {
+      "parameters": {"rule": {"interval": [{"field": "minutes", "minutesInterval": 15}]}},
+      "id": "schedule",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://hn.algolia.com/api/v1/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "query", "value": "OpenAI OR Anthropic OR Google AI OR GPT-5 OR Claude OR Gemini"},
+            {"name": "tags", "value": "story"},
+            {"name": "numericFilters", "value": "points>100,created_at_i>{{ $now.minus(2, 'hours').toSeconds() }}"},
+            {"name": "hitsPerPage", "value": "10"}
+          ]
+        },
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "hn-breaking",
+      "name": "HN Breaking",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/artificial+ChatGPT+ClaudeAI+OpenAI/hot.json",
+        "sendQuery": true,
+        "queryParameters": {"parameters": [{"name": "limit", "value": "20"}]},
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "headers": {"parameters": [{"name": "User-Agent", "value": "vibecheck-alerts/1.0"}]}
+        }
+      },
+      "id": "reddit-breaking",
+      "name": "Reddit Breaking",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = Date.now();\nconst twoHoursAgo = now - 2 * 60 * 60 * 1000;\nconst breaking = [];\n\nconst breakingKeywords = [\n  'GPT-5', 'GPT-4.5', 'Claude 4', 'Gemini 2', 'announces', 'launches', 'released',\n  'breaking', 'just announced', 'official', 'new model', 'billion', 'acquisition',\n  'shut down', 'shutdown', 'OpenAI', 'Anthropic', 'Google DeepMind', 'Microsoft',\n  'regulation', 'banned', 'lawsuit', 'safety', 'AGI', 'breakthrough'\n];\n\nconst isBreaking = (title) => {\n  const lower = title.toLowerCase();\n  return breakingKeywords.some(k => lower.includes(k.toLowerCase()));\n};\n\nfor (const input of $input.all()) {\n  const d = input.json;\n  \n  // HN\n  if (d.hits) {\n    for (const h of d.hits) {\n      if (h.points < 100) continue;\n      const created = new Date(h.created_at).getTime();\n      if (created < twoHoursAgo) continue;\n      if (!isBreaking(h.title)) continue;\n      \n      breaking.push({\n        source: 'hackernews',\n        title: h.title,\n        url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,\n        score: h.points,\n        created: h.created_at,\n        age_minutes: Math.round((now - created) / 60000)\n      });\n    }\n  }\n  \n  // Reddit\n  if (d.data?.children) {\n    for (const child of d.data.children) {\n      const p = child.data;\n      if (p.score < 200) continue;\n      const created = p.created_utc * 1000;\n      if (created < twoHoursAgo) continue;\n      if (!isBreaking(p.title)) continue;\n      \n      breaking.push({\n        source: 'reddit',\n        subreddit: p.subreddit,\n        title: p.title,\n        url: `https://reddit.com${p.permalink}`,\n        score: p.score,\n        created: new Date(created).toISOString(),\n        age_minutes: Math.round((now - created) / 60000)\n      });\n    }\n  }\n}\n\n// Dedupe and sort\nconst seen = new Set();\nconst unique = breaking.filter(b => {\n  const key = b.title.toLowerCase().substring(0, 50);\n  if (seen.has(key)) return false;\n  seen.add(key);\n  return true;\n}).sort((a, b) => b.score - a.score);\n\nif (unique.length === 0) {\n  return [{ json: { no_breaking: true } }];\n}\n\nreturn [{ json: { breaking: unique, count: unique.length } }];"
+      },
+      "id": "detect-breaking",
+      "name": "Detect Breaking",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {"leftValue": "={{ $json.no_breaking }}", "rightValue": true, "operator": {"type": "boolean", "operation": "notEquals"}}
+          ]
+        }
+      },
+      "id": "has-breaking",
+      "name": "Has Breaking?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT url FROM vibecheck_alerts WHERE created_at > NOW() - INTERVAL '24 hours'"
+      },
+      "id": "get-sent-alerts",
+      "name": "Get Sent Alerts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1000, 300],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const breaking = $('Detect Breaking').first().json.breaking || [];\nconst sentUrls = new Set($('Get Sent Alerts').all().map(r => r.json.url));\n\nconst newBreaking = breaking.filter(b => !sentUrls.has(b.url));\n\nif (newBreaking.length === 0) {\n  return [{ json: { skip: true } }];\n}\n\nreturn [{ json: { alerts: newBreaking, count: newBreaking.length } }];"
+      },
+      "id": "filter-sent",
+      "name": "Filter Already Sent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {"leftValue": "={{ $json.skip }}", "rightValue": true, "operator": {"type": "boolean", "operation": "notEquals"}}
+          ]
+        }
+      },
+      "id": "has-new",
+      "name": "Has New?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1500, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, email, name, telegram_chat_id, discord_webhook, slack_webhook FROM vibecheck_users WHERE active = true AND breaking_alerts = true"
+      },
+      "id": "get-alert-subscribers",
+      "name": "Get Alert Subscribers",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1750, 200],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const alerts = $('Filter Already Sent').first().json.alerts || [];\n\n// Save alerts to prevent re-sending\nconst insertQueries = alerts.map(a => \n  `INSERT INTO vibecheck_alerts (title, url, source, score) VALUES ('${a.title.replace(/'/g, \"''\")}', '${a.url}', '${a.source}', ${a.score})`\n).join('; ');\n\n// Format alert message\nconst alertText = alerts.map(a => \n  `🚨 *${a.title}*\\n${a.url}\\n_${a.source} • ${a.score} points • ${a.age_minutes}m ago_`\n).join('\\n\\n');\n\nreturn [{ json: { alerts, alertText, insertQueries } }];"
+      },
+      "id": "format-alerts",
+      "name": "Format Alerts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1750, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.insertQueries }}"
+      },
+      "id": "save-alerts",
+      "name": "Save Sent Alerts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2000, 400],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Get Alert Subscribers').first().json.telegram_chat_id }}",
+        "text": "=🔥 *BREAKING AI NEWS*\\n\\n{{ $('Format Alerts').first().json.alertText }}",
+        "additionalFields": {"parse_mode": "Markdown", "disable_web_page_preview": true}
+      },
+      "id": "send-telegram-alert",
+      "name": "Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2000, 200],
+      "credentials": {"telegramApi": {"id": "rJyNUHrw87YVIOrc", "name": "WZigBot"}}
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {"main": [[
+      {"node": "HN Breaking", "type": "main", "index": 0},
+      {"node": "Reddit Breaking", "type": "main", "index": 0}
+    ]]},
+    "HN Breaking": {"main": [[{"node": "Detect Breaking", "type": "main", "index": 0}]]},
+    "Reddit Breaking": {"main": [[{"node": "Detect Breaking", "type": "main", "index": 0}]]},
+    "Detect Breaking": {"main": [[{"node": "Has Breaking?", "type": "main", "index": 0}]]},
+    "Has Breaking?": {"main": [[{"node": "Get Sent Alerts", "type": "main", "index": 0}]]},
+    "Get Sent Alerts": {"main": [[{"node": "Filter Already Sent", "type": "main", "index": 0}]]},
+    "Filter Already Sent": {"main": [[{"node": "Has New?", "type": "main", "index": 0}]]},
+    "Has New?": {"main": [[{"node": "Get Alert Subscribers", "type": "main", "index": 0}, {"node": "Format Alerts", "type": "main", "index": 0}]]},
+    "Format Alerts": {"main": [[{"node": "Save Sent Alerts", "type": "main", "index": 0}]]},
+    "Get Alert Subscribers": {"main": [[{"node": "Telegram Alert", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false,
+  "versionId": "breaking-alerts-v1"
+}

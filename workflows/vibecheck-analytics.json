@@ -1,0 +1,117 @@
+{
+  "name": "vibecheck-analytics",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "vibecheck-analytics",
+        "options": {}
+      },
+      "id": "analytics-webhook",
+      "name": "Analytics Dashboard",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "vibecheck-analytics"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as total_users, COUNT(*) FILTER (WHERE active = true) as active_users, COUNT(*) FILTER (WHERE delivery_method = 'email') as email_users, COUNT(*) FILTER (WHERE delivery_method = 'telegram') as telegram_users, COUNT(*) FILTER (WHERE delivery_method = 'discord') as discord_users, COUNT(*) FILTER (WHERE delivery_method = 'slack') as slack_users, COUNT(*) FILTER (WHERE breaking_alerts = true) as breaking_subscribers, COUNT(*) FILTER (WHERE weekly_digest = true) as weekly_subscribers FROM vibecheck_users"
+      },
+      "id": "user-stats",
+      "name": "User Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [250, 150],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as total_digests, COUNT(*) FILTER (WHERE generated_at > NOW() - INTERVAL '7 days') as week_digests, COUNT(*) FILTER (WHERE generated_at > NOW() - INTERVAL '30 days') as month_digests FROM vibecheck_digests"
+      },
+      "id": "digest-stats",
+      "name": "Digest Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [250, 300],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as total_alerts, COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') as today_alerts, COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as week_alerts FROM vibecheck_alerts"
+      },
+      "id": "alert-stats",
+      "name": "Alert Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [250, 450],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT content::json->'sources' as sources, content::json->'total_items' as total_items, fetched_at FROM vibecheck_raw_content ORDER BY fetched_at DESC LIMIT 5"
+      },
+      "id": "content-stats",
+      "name": "Content Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [250, 600],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    },
+    {
+      "parameters": {"mode": "combine", "combineBy": "combineAll", "options": {}},
+      "id": "merge",
+      "name": "Merge Stats",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputs = $input.all();\nconst users = inputs.find(i => i.json.total_users !== undefined)?.json || {};\nconst digests = inputs.find(i => i.json.total_digests !== undefined)?.json || {};\nconst alerts = inputs.find(i => i.json.total_alerts !== undefined)?.json || {};\nconst contentRows = inputs.filter(i => i.json.sources);\n\n// Calculate source averages\nlet sourceAvg = { reddit: 0, hackernews: 0, devto: 0, github: 0, arxiv: 0, youtube: 0, news: 0 };\nlet totalItems = 0;\nfor (const row of contentRows) {\n  const src = typeof row.json.sources === 'string' ? JSON.parse(row.json.sources) : row.json.sources;\n  for (const [k, v] of Object.entries(src || {})) {\n    sourceAvg[k] = (sourceAvg[k] || 0) + (v || 0);\n  }\n  totalItems += parseInt(row.json.total_items) || 0;\n}\nconst fetchCount = contentRows.length || 1;\nfor (const k of Object.keys(sourceAvg)) {\n  sourceAvg[k] = Math.round(sourceAvg[k] / fetchCount);\n}\n\nconst now = new Date();\nconst html = `<!DOCTYPE html>\n<html><head>\n<title>vibecheck Analytics</title>\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta http-equiv=\"refresh\" content=\"60\">\n<style>\n* { box-sizing: border-box; }\nbody { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f1a; color: #e0e0e0; margin: 0; padding: 20px; }\n.container { max-width: 1200px; margin: 0 auto; }\nh1 { color: #667eea; margin: 0 0 5px; font-size: 32px; }\n.subtitle { color: #888; margin-bottom: 30px; }\n.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px; }\n.card { background: #1a1a2e; border-radius: 12px; padding: 25px; border: 1px solid #2a2a4e; }\n.card h2 { color: #667eea; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 15px; }\n.stat { font-size: 48px; font-weight: 700; color: white; margin: 0; }\n.stat-label { color: #888; font-size: 14px; margin-top: 5px; }\n.stat-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #2a2a4e; }\n.stat-row:last-child { border: none; }\n.stat-name { color: #aaa; }\n.stat-value { color: white; font-weight: 600; }\n.source-bar { height: 8px; background: #2a2a4e; border-radius: 4px; margin-top: 8px; overflow: hidden; }\n.source-fill { height: 100%; border-radius: 4px; }\n.legend { display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px; }\n.legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #888; }\n.legend-dot { width: 10px; height: 10px; border-radius: 50%; }\n.footer { text-align: center; color: #555; font-size: 12px; margin-top: 40px; }\n</style>\n</head><body>\n<div class=\"container\">\n<h1>vibecheck Analytics</h1>\n<p class=\"subtitle\">Real-time newsletter metrics • Updated ${now.toLocaleString()}</p>\n\n<div class=\"grid\">\n  <div class=\"card\">\n    <h2>Subscribers</h2>\n    <p class=\"stat\">${users.active_users || 0}</p>\n    <p class=\"stat-label\">Active subscribers</p>\n    <div style=\"margin-top: 20px;\">\n      <div class=\"stat-row\"><span class=\"stat-name\">Email</span><span class=\"stat-value\">${users.email_users || 0}</span></div>\n      <div class=\"stat-row\"><span class=\"stat-name\">Telegram</span><span class=\"stat-value\">${users.telegram_users || 0}</span></div>\n      <div class=\"stat-row\"><span class=\"stat-name\">Discord</span><span class=\"stat-value\">${users.discord_users || 0}</span></div>\n      <div class=\"stat-row\"><span class=\"stat-name\">Slack</span><span class=\"stat-value\">${users.slack_users || 0}</span></div>\n    </div>\n  </div>\n  \n  <div class=\"card\">\n    <h2>Newsletters Sent</h2>\n    <p class=\"stat\">${digests.total_digests || 0}</p>\n    <p class=\"stat-label\">Total digests generated</p>\n    <div style=\"margin-top: 20px;\">\n      <div class=\"stat-row\"><span class=\"stat-name\">This week</span><span class=\"stat-value\">${digests.week_digests || 0}</span></div>\n      <div class=\"stat-row\"><span class=\"stat-name\">This month</span><span class=\"stat-value\">${digests.month_digests || 0}</span></div>\n      <div class=\"stat-row\"><span class=\"stat-name\">Weekly subscribers</span><span class=\"stat-value\">${users.weekly_subscribers || 0}</span></div>\n    </div>\n  </div>\n  \n  <div class=\"card\">\n    <h2>Breaking Alerts</h2>\n    <p class=\"stat\">${alerts.today_alerts || 0}</p>\n    <p class=\"stat-label\">Alerts today</p>\n    <div style=\"margin-top: 20px;\">\n      <div class=\"stat-row\"><span class=\"stat-name\">This week</span><span class=\"stat-value\">${alerts.week_alerts || 0}</span></div>\n      <div class=\"stat-row\"><span class=\"stat-name\">All time</span><span class=\"stat-value\">${alerts.total_alerts || 0}</span></div>\n      <div class=\"stat-row\"><span class=\"stat-name\">Alert subscribers</span><span class=\"stat-value\">${users.breaking_subscribers || 0}</span></div>\n    </div>\n  </div>\n  \n  <div class=\"card\">\n    <h2>Content Sources</h2>\n    <p class=\"stat\">${Math.round(totalItems / fetchCount)}</p>\n    <p class=\"stat-label\">Avg items per fetch</p>\n    <div style=\"margin-top: 20px;\">\n      <div class=\"stat-row\"><span class=\"stat-name\">Reddit</span><span class=\"stat-value\">${sourceAvg.reddit}</span></div>\n      <div class=\"stat-row\"><span class=\"stat-name\">Hacker News</span><span class=\"stat-value\">${sourceAvg.hackernews}</span></div>\n      <div class=\"stat-row\"><span class=\"stat-name\">GitHub</span><span class=\"stat-value\">${sourceAvg.github}</span></div>\n      <div class=\"stat-row\"><span class=\"stat-name\">ArXiv</span><span class=\"stat-value\">${sourceAvg.arxiv}</span></div>\n      <div class=\"stat-row\"><span class=\"stat-name\">YouTube</span><span class=\"stat-value\">${sourceAvg.youtube}</span></div>\n      <div class=\"stat-row\"><span class=\"stat-name\">News RSS</span><span class=\"stat-value\">${sourceAvg.news}</span></div>\n    </div>\n  </div>\n</div>\n\n<div class=\"footer\">\n  <p>vibecheck Analytics Dashboard • Auto-refreshes every 60 seconds</p>\n</div>\n</div>\n</body></html>`;\n\nreturn [{ json: { html } }];"
+      },
+      "id": "render",
+      "name": "Render Dashboard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [{"name": "Content-Type", "value": "text/html"}]
+          }
+        }
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Analytics Dashboard": {"main": [[
+      {"node": "User Stats", "type": "main", "index": 0},
+      {"node": "Digest Stats", "type": "main", "index": 0},
+      {"node": "Alert Stats", "type": "main", "index": 0},
+      {"node": "Content Stats", "type": "main", "index": 0}
+    ]]},
+    "User Stats": {"main": [[{"node": "Merge Stats", "type": "main", "index": 0}]]},
+    "Digest Stats": {"main": [[{"node": "Merge Stats", "type": "main", "index": 0}]]},
+    "Alert Stats": {"main": [[{"node": "Merge Stats", "type": "main", "index": 0}]]},
+    "Content Stats": {"main": [[{"node": "Merge Stats", "type": "main", "index": 0}]]},
+    "Merge Stats": {"main": [[{"node": "Render Dashboard", "type": "main", "index": 0}]]},
+    "Render Dashboard": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false,
+  "versionId": "analytics-v1"
+}

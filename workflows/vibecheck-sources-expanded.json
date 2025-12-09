@@ -1,0 +1,334 @@
+{
+  "name": "vibecheck-sources-expanded",
+  "nodes": [
+    {
+      "parameters": {"rule": {"interval": [{"field": "hours", "hoursInterval": 3}]}},
+      "id": "schedule",
+      "name": "Every 3 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 500]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://export.arxiv.org/api/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "search_query", "value": "cat:cs.AI OR cat:cs.LG OR cat:cs.CL"},
+            {"name": "sortBy", "value": "submittedDate"},
+            {"name": "sortOrder", "value": "descending"},
+            {"name": "max_results", "value": "30"}
+          ]
+        },
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "arxiv",
+      "name": "ArXiv AI Papers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 100]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/search/repositories",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "q", "value": "topic:ai OR topic:machine-learning OR topic:llm created:>{{ $now.minus(7, 'days').toISODate() }}"},
+            {"name": "sort", "value": "stars"},
+            {"name": "order", "value": "desc"},
+            {"name": "per_page", "value": "30"}
+          ]
+        },
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "github-trending",
+      "name": "GitHub Trending AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 250]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/artificial+MachineLearning+singularity+ChatGPT+LocalLLaMA+ClaudeAI+StableDiffusion+midjourney+OpenAI+Bing+perplexity_ai/hot.json",
+        "sendQuery": true,
+        "queryParameters": {"parameters": [{"name": "limit", "value": "75"}]},
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "headers": {"parameters": [{"name": "User-Agent", "value": "vibecheck/2.0"}]}
+        }
+      },
+      "id": "reddit-mega",
+      "name": "Reddit AI Mega",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/cursor+GithubCopilot+windsurf+vscode+neovim/hot.json",
+        "sendQuery": true,
+        "queryParameters": {"parameters": [{"name": "limit", "value": "40"}]},
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "headers": {"parameters": [{"name": "User-Agent", "value": "vibecheck/2.0"}]}
+        }
+      },
+      "id": "reddit-coding",
+      "name": "Reddit Coding Tools",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 550]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://hn.algolia.com/api/v1/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "query", "value": "AI OR GPT OR Claude OR LLM OR Anthropic OR OpenAI OR Gemini OR Llama"},
+            {"name": "tags", "value": "story"},
+            {"name": "numericFilters", "value": "points>15,created_at_i>{{ $now.minus(3, 'days').toSeconds() }}"},
+            {"name": "hitsPerPage", "value": "50"}
+          ]
+        },
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "hackernews",
+      "name": "Hacker News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 700]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://dev.to/api/articles",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "tag", "value": "ai,machinelearning,llm"},
+            {"name": "per_page", "value": "30"},
+            {"name": "top", "value": "7"}
+          ]
+        },
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "devto",
+      "name": "Dev.to",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 850]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://nitter.poast.org/search/rss?f=tweets&q=AI%20OR%20GPT%20OR%20Claude%20filter%3Alinks%20min_faves%3A100",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "twitter-nitter",
+      "name": "Twitter via Nitter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 100],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "rss-techcrunch",
+      "name": "TechCrunch RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 250]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "rss-verge",
+      "name": "The Verge RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.wired.com/feed/tag/ai/latest/rss",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "rss-wired",
+      "name": "Wired AI RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 550]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://venturebeat.com/category/ai/feed/",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "rss-venturebeat",
+      "name": "VentureBeat AI RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 700]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://arstechnica.com/tag/artificial-intelligence/feed/",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "rss-ars",
+      "name": "Ars Technica RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 850]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCsBjURrPoezykLs9EqgamOA",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "yt-fireship",
+      "name": "YT Fireship",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 100]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCbfYPyITQ-7l4upoX8nvctg",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "yt-twomin",
+      "name": "YT Two Minute Papers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 250]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCZHmQk67mN31HHN91xA7t0Q",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "yt-yannic",
+      "name": "YT Yannic Kilcher",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCL_f53ZEJxp8TtlOkHwMV9Q",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "yt-jordan",
+      "name": "YT AI Jason",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 550]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCKHnDLDE8985gd_1a0xLAHw",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "yt-mattwolfe",
+      "name": "YT Matt Wolfe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 700]
+    },
+    {
+      "parameters": {"mode": "combine", "combineBy": "combineAll", "options": {}},
+      "id": "merge",
+      "name": "Merge All",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [800, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = [];\nconst now = Date.now();\nconst seen = new Set();\n\nconst addItem = (item) => {\n  const key = item.title.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 50);\n  if (seen.has(key)) return;\n  seen.add(key);\n  items.push(item);\n};\n\nfor (const input of $input.all()) {\n  const d = input.json;\n  \n  // Reddit\n  if (d.data?.children) {\n    for (const child of d.data.children) {\n      const p = child.data;\n      if (p.score < 15) continue;\n      addItem({\n        source: 'reddit',\n        subreddit: p.subreddit,\n        title: p.title,\n        content: (p.selftext || '').substring(0, 600),\n        url: `https://reddit.com${p.permalink}`,\n        score: p.score,\n        comments: p.num_comments,\n        created: new Date(p.created_utc * 1000).toISOString(),\n        age_hours: Math.round((now - p.created_utc * 1000) / 3600000),\n        author: p.author,\n        flair: p.link_flair_text || '',\n        type: 'discussion'\n      });\n    }\n  }\n  \n  // Hacker News\n  if (d.hits) {\n    for (const h of d.hits) {\n      if (h.points < 15) continue;\n      addItem({\n        source: 'hackernews',\n        title: h.title,\n        content: (h.story_text || '').substring(0, 600),\n        url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,\n        hn_url: `https://news.ycombinator.com/item?id=${h.objectID}`,\n        score: h.points,\n        comments: h.num_comments,\n        created: h.created_at,\n        age_hours: Math.round((now - new Date(h.created_at).getTime()) / 3600000),\n        author: h.author,\n        type: 'news'\n      });\n    }\n  }\n  \n  // Dev.to\n  if (Array.isArray(d)) {\n    for (const a of d) {\n      if (a.positive_reactions_count < 10) continue;\n      addItem({\n        source: 'devto',\n        title: a.title,\n        content: (a.description || '').substring(0, 600),\n        url: a.url,\n        score: a.positive_reactions_count,\n        comments: a.comments_count,\n        created: a.published_at,\n        age_hours: Math.round((now - new Date(a.published_at).getTime()) / 3600000),\n        author: a.user?.username,\n        tags: a.tag_list || [],\n        type: 'article'\n      });\n    }\n  }\n  \n  // GitHub\n  if (d.items && d.total_count !== undefined) {\n    for (const repo of d.items) {\n      addItem({\n        source: 'github',\n        title: `${repo.full_name}: ${repo.description || 'No description'}`,\n        content: repo.description || '',\n        url: repo.html_url,\n        score: repo.stargazers_count,\n        comments: repo.open_issues_count,\n        created: repo.created_at,\n        age_hours: Math.round((now - new Date(repo.pushed_at).getTime()) / 3600000),\n        author: repo.owner?.login,\n        language: repo.language,\n        type: 'repo'\n      });\n    }\n  }\n  \n  // ArXiv (XML)\n  if (typeof d === 'string' && d.includes('<feed')) {\n    const entries = d.match(/<entry>([\\s\\S]*?)<\\/entry>/g) || [];\n    for (const entry of entries.slice(0, 20)) {\n      const title = (entry.match(/<title>([^<]+)<\\/title>/) || [])[1]?.trim();\n      const link = (entry.match(/<id>([^<]+)<\\/id>/) || [])[1];\n      const summary = (entry.match(/<summary>([\\s\\S]*?)<\\/summary>/) || [])[1]?.trim().substring(0, 400);\n      const published = (entry.match(/<published>([^<]+)<\\/published>/) || [])[1];\n      const authors = (entry.match(/<name>([^<]+)<\\/name>/g) || []).map(a => a.replace(/<\\/?name>/g, '')).slice(0, 3).join(', ');\n      \n      if (title && link) {\n        addItem({\n          source: 'arxiv',\n          title: title.replace(/\\n/g, ' '),\n          content: summary?.replace(/\\n/g, ' ') || '',\n          url: link,\n          score: 100,\n          created: published,\n          age_hours: published ? Math.round((now - new Date(published).getTime()) / 3600000) : 24,\n          author: authors,\n          type: 'paper'\n        });\n      }\n    }\n  }\n  \n  // YouTube Atom feeds\n  if (typeof d === 'string' && d.includes('yt:videoId')) {\n    const entries = d.match(/<entry>[\\s\\S]*?<\\/entry>/g) || [];\n    for (const entry of entries.slice(0, 10)) {\n      const title = (entry.match(/<title>([^<]+)<\\/title>/) || [])[1]?.trim();\n      const videoId = (entry.match(/<yt:videoId>([^<]+)<\\/yt:videoId>/) || [])[1];\n      const published = (entry.match(/<published>([^<]+)<\\/published>/) || [])[1];\n      const author = (entry.match(/<author>\\s*<name>([^<]+)<\\/name>/) || [])[1];\n      if (title && videoId) {\n        addItem({\n          source: 'youtube',\n          channel: author || 'AI Channel',\n          title: title,\n          content: '',\n          url: `https://youtube.com/watch?v=${videoId}`,\n          score: 80,\n          created: published ? new Date(published).toISOString() : new Date().toISOString(),\n          age_hours: published ? Math.round((now - new Date(published).getTime()) / 3600000) : 24,\n          author: author,\n          type: 'video'\n        });\n      }\n    }\n  }\n  \n  // RSS feeds\n  if (typeof d === 'string' && (d.includes('<rss') || d.includes('<feed')) && !d.includes('yt:videoId')) {\n    const items_match = d.match(/<item>([\\s\\S]*?)<\\/item>/g) || d.match(/<entry>([\\s\\S]*?)<\\/entry>/g) || [];\n    for (const item of items_match.slice(0, 15)) {\n      const title = (item.match(/<title>(?:<!\\[CDATA\\[)?([^\\]<]+)(?:\\]\\]>)?<\\/title>/) || [])[1]?.trim();\n      const link = (item.match(/<link>([^<]+)<\\/link>/) || item.match(/href=\"([^\"]+)\"/) || [])[1];\n      const pubDate = (item.match(/<pubDate>([^<]+)<\\/pubDate>/) || item.match(/<published>([^<]+)<\\/published>/) || [])[1];\n      \n      if (title && link && !title.includes('arxiv')) {\n        addItem({\n          source: 'news',\n          title: title,\n          content: '',\n          url: link,\n          score: 75,\n          created: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),\n          age_hours: pubDate ? Math.round((now - new Date(pubDate).getTime()) / 3600000) : 12,\n          type: 'news'\n        });\n      }\n    }\n  }\n}\n\n// Weighted score: engagement + recency\nitems.sort((a, b) => {\n  const recencyA = Math.max(0.2, 1 - (a.age_hours || 24) / 72);\n  const recencyB = Math.max(0.2, 1 - (b.age_hours || 24) / 72);\n  const scoreA = (a.score || 0) * recencyA;\n  const scoreB = (b.score || 0) * recencyB;\n  return scoreB - scoreA;\n});\n\nreturn [{\n  json: {\n    fetched_at: new Date().toISOString(),\n    sources: {\n      reddit: items.filter(i => i.source === 'reddit').length,\n      hackernews: items.filter(i => i.source === 'hackernews').length,\n      devto: items.filter(i => i.source === 'devto').length,\n      github: items.filter(i => i.source === 'github').length,\n      arxiv: items.filter(i => i.source === 'arxiv').length,\n      youtube: items.filter(i => i.source === 'youtube').length,\n      news: items.filter(i => i.source === 'news').length\n    },\n    total_items: items.length,\n    items: items.slice(0, 150)\n  }\n}];"
+      },
+      "id": "normalize",
+      "name": "Normalize & Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 500]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO vibecheck_raw_content (content) VALUES ('{{ JSON.stringify($json).replace(/'/g, \"''\") }}') RETURNING id"
+      },
+      "id": "save",
+      "name": "Save to DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, 500],
+      "credentials": {"postgres": {"id": "vibecheck-pg-local", "name": "PostgreSQL (vibecheck-local)"}}
+    }
+  ],
+  "connections": {
+    "Every 3 Hours": {"main": [[
+      {"node": "ArXiv AI Papers", "type": "main", "index": 0},
+      {"node": "GitHub Trending AI", "type": "main", "index": 0},
+      {"node": "Reddit AI Mega", "type": "main", "index": 0},
+      {"node": "Reddit Coding Tools", "type": "main", "index": 0},
+      {"node": "Hacker News", "type": "main", "index": 0},
+      {"node": "Dev.to", "type": "main", "index": 0},
+      {"node": "TechCrunch RSS", "type": "main", "index": 0},
+      {"node": "The Verge RSS", "type": "main", "index": 0},
+      {"node": "Wired AI RSS", "type": "main", "index": 0},
+      {"node": "VentureBeat AI RSS", "type": "main", "index": 0},
+      {"node": "Ars Technica RSS", "type": "main", "index": 0},
+      {"node": "YT Fireship", "type": "main", "index": 0},
+      {"node": "YT Two Minute Papers", "type": "main", "index": 0},
+      {"node": "YT Yannic Kilcher", "type": "main", "index": 0},
+      {"node": "YT AI Jason", "type": "main", "index": 0},
+      {"node": "YT Matt Wolfe", "type": "main", "index": 0}
+    ]]},
+    "ArXiv AI Papers": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "GitHub Trending AI": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "Reddit AI Mega": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "Reddit Coding Tools": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "Hacker News": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "Dev.to": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "TechCrunch RSS": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "The Verge RSS": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "Wired AI RSS": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "VentureBeat AI RSS": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "Ars Technica RSS": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "YT Fireship": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "YT Two Minute Papers": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "YT Yannic Kilcher": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "YT AI Jason": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "YT Matt Wolfe": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "Merge All": {"main": [[{"node": "Normalize & Score", "type": "main", "index": 0}]]},
+    "Normalize & Score": {"main": [[{"node": "Save to DB", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false,
+  "versionId": "sources-expanded-v1"
+}
