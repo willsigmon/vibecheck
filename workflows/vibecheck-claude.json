@@ -181,7 +181,7 @@
     {
       "parameters": {
         "operation": "read",
-        "fileSelector": "/mnt/user/appdata/dotfiles-hub/claude/intelligence-kb.json",
+        "fileSelector": "./knowledge-base.json",
         "options": {}
       },
       "id": "read-existing-kb",
@@ -203,7 +203,7 @@
     {
       "parameters": {
         "operation": "write",
-        "fileName": "/mnt/user/appdata/dotfiles-hub/claude/intelligence-kb.json",
+        "fileName": "./knowledge-base.json",
         "options": {}
       },
       "id": "write-kb",
