@@ -181,7 +181,7 @@
     {
       "parameters": {
         "operation": "read",
-        "fileSelector": "./knowledge-base.json",
+        "fileSelector": "={{($env.N8N_USER_FOLDER || ($env.HOME + '/.n8n')) + '/workflows/knowledge-base.json'}}",
         "options": {}
       },
       "id": "read-existing-kb",
@@ -203,7 +203,7 @@
     {
       "parameters": {
         "operation": "write",
-        "fileName": "./knowledge-base.json",
+        "fileName": "={{($env.N8N_USER_FOLDER || ($env.HOME + '/.n8n')) + '/workflows/knowledge-base.json'}}",
         "options": {}
       },
       "id": "write-kb",

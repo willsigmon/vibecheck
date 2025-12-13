@@ -118,7 +118,7 @@
       "position": [1100, 100]
     },
     {
-      "parameters": {"operation": "read", "fileSelector": "./knowledge-base.json", "options": {}},
+      "parameters": {"operation": "read", "fileSelector": "={{($env.N8N_USER_FOLDER || ($env.HOME + '/.n8n')) + '/workflows/knowledge-base.json'}}", "options": {}},
       "id": "read",
       "name": "Read KB",
       "type": "n8n-nodes-base.readWriteFile",
@@ -136,7 +136,7 @@
       "position": [1500, 100]
     },
     {
-      "parameters": {"operation": "write", "fileName": "./knowledge-base.json", "options": {}},
+      "parameters": {"operation": "write", "fileName": "={{($env.N8N_USER_FOLDER || ($env.HOME + '/.n8n')) + '/workflows/knowledge-base.json'}}", "options": {}},
       "id": "write",
       "name": "Save",
       "type": "n8n-nodes-base.readWriteFile",
